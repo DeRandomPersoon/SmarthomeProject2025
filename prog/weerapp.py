@@ -1,5 +1,3 @@
-temparaturen = []
-no_input = print('Geen input gegeven')
 def fahrenheit(temp_celcius):
     """
     berekend de warmte in fahrenheit
@@ -23,6 +21,7 @@ def weerrapport(temp_celcius, windsnelheid, luchtvochtigheid):
     laat de temparatuur zien, geeft een string gebaseerd op de gevoels temparatuur en berekend de gemiddelde temparatuur in graden celcius
 
     """
+    temparaturen = []
     print('Het is', str(temp_celcius) +  'C', '(' + str(fahrenheit(temp_celcius)) + 'F)')
     gevoel_temp = gevoelstemperatuur(temp_celcius, windsnelheid, luchtvochtigheid)
     if gevoel_temp < 0 and windsnelheid > 10:
