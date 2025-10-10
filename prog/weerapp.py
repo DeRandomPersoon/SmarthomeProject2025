@@ -1,5 +1,5 @@
 temparaturen = []
-no_input = 'Geen input gegeven'
+no_input = print('Geen input gegeven')
 def fahrenheit(temp_celcius):
     """
     berekend de warmte in fahrenheit
@@ -41,44 +41,30 @@ def weerrapport(temp_celcius, windsnelheid, luchtvochtigheid):
     print('Gem. temp tot nu toe is', str(sum(temparaturen)/len(temparaturen)))
     print('=============================================================================================')
 def main():
-    celcius_1 = (input('Wat is op dag 1 de temperatuur[C]: '))
-    if len(celcius_1) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    snelheid_1 = (input('Wat is op dag 1 de windsnelheid[m/s]: '))
-    if len(snelheid_1) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    procent_1 = (input('Wat is op dag 1 de vochtigheid[%]: '))
-    if len(procent_1) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    weerrapport(float(celcius_1), float(snelheid_1), int(procent_1))
-    celcius_2 = (input('Wat is op dag 2 de temperatuur[C]: '))
-    if len(celcius_2) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    snelheid_2 = (input('Wat is op dag 2 de windsnelheid[m/s]: '))
-    if len(snelheid_2) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    procent_2 = (input('Wat is op dag 2 de vochtigheid[%]: '))
-    if len(procent_2) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    weerrapport(float(celcius_2), float(snelheid_2), int(procent_2))
-    celcius_3 = (input('Wat is op dag 3 de temperatuur[C]: '))
-    if len(celcius_3) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    snelheid_3 = (input('Wat is op dag 3 de windsnelheid[m/s]: '))
-    if len(snelheid_3) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    procent_3 = (input('Wat is op dag 3 de vochtigheid[%]: '))
-    if len(procent_3) == 0:
-        print(no_input)
-        return 'geen input gegeven'
-    weerrapport(float(celcius_3), float(snelheid_3), int(procent_3))
+    teller = 1
+    while True:
+            celcius = (input(f'Wat is op dag {teller} de temperatuur[C]: '))
+            if len(celcius) == 0:
+                print('Geen input gegeven, programma sluiten')
+                break
+            else:
+                snelheid = (input(f'Wat is op dag {teller} de windsnelheid[m/s]: '))
+                if len(snelheid) == 0:
+                    print('Geen input gegeven, programma sluiten')
+                    break
+                else:
+                    procent = (input(f'Wat is op dag {teller} de vochtigheid[%]: '))
+                    if len(procent) == 0:
+                        print('Geen input gegeven, programma sluiten')
+                        break
+                    else:
+                        try:
+                            weerrapport(float(celcius), float(snelheid), int(procent))
+                            teller = teller + 1
+                            if teller == 8:
+                                break
+                        except ValueError:
+                            print('Error, vul nummers in')
+
 if __name__ == '__main__':
     main()
