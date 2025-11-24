@@ -1,1 +1,86 @@
 #GeneralDashboard page for all things related to the dashboard
+
+#current file is old repurposed dashboard untill a new one is made
+
+import tkinter as tk
+from tkinter import ttk
+    
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Smart App")
+        self.geometry("900x600")
+        self.minsize(800, 500)
+
+        #Navbar
+        navbar = ttk.Frame(self)
+        navbar.grid(row=0, column=0, columnspan=5, sticky="ew")
+        navbar.columnconfigure((0, 1, 2, 3, 4), weight=1)
+
+        #Buttons in navbar
+        ttk.Button(navbar, text="Hoofdmenu", command=lambda: self.show_frame("MainPage")).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
+        ttk.Button(navbar, text="Weerstation", command=lambda: self.show_frame("WeerstationPage")).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
+        ttk.Button(navbar, text="SmartCtrl", command=lambda: self.show_frame("SmartControllerPage")).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
+        ttk.Button(navbar, text="Notepad", command=lambda: self.show_frame("NotepadPage")).grid(row=0, column=3, sticky="ew", padx=2, pady=2)
+        ttk.Button(navbar, text="Weerpagina", command=lambda: self.show_frame("WeatherPage")).grid(row=0, column=4, sticky="ew", padx=2, pady=2)
+
+        #Container
+        container = ttk.Frame(self)
+        container.grid(row=1, column=0, sticky="nsew")
+        self.rowconfigure(1, weight=1)
+        self.columnconfigure(0, weight=1)
+
+        #Load all pages
+        self.frames = {}
+        for PageClass in (MainPage, WeerstationPage, SmartControllerPage, NotepadPage, WeatherPage):
+            page_name = PageClass.__name__
+            frame = PageClass(container, self)
+            self.frames[page_name] = frame
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        #Default startup page
+        self.show_frame("MainPage")
+
+    def show_frame(self, name):
+        frame = self.frames[name]
+        frame.tkraise()
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
+
+
+class MainPage(ttk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+
+        self.controller = controller
+        #Grid
+        self.columnconfigure((0,1), weight=1, uniform="col")
+        self.rowconfigure((0,1), weight=1, uniform="row")
+
+        #Texts for grid
+        self._make_tile(0, 0, "Weerstation", "Voer weerdata in", lambda: controller.show_frame("WeerstationPage"), "#AED6F1")
+        self._make_tile(0, 1, "SmartCtrl", "Slimme actuatoren", lambda: controller.show_frame("SmartControllerPage"), "#A9DFBF")
+        self._make_tile(1, 0, "Notepad", "Maak notities", lambda: controller.show_frame("NotepadPage"), "#F9E79F")
+        self._make_tile(1, 1, "Weer live", "Actueel weer via API", lambda: controller.show_frame("WeatherPage"), "#F5B7B1")
+
+    def _make_tile(self, r, c, title, subtitle, command, color):
+        frame = ttk.Frame(self, borderwidth=2, relief="ridge")
+        frame.grid(row=r, column=c, sticky="nsew", padx=10, pady=10)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(0, weight=1)
+        #Colours <3
+        label_bg = tk.Label(frame, bg=color)
+        label_bg.place(relx=0, rely=0, relwidth=1, relheight=1)
+
+        lbl_title = ttk.Label(frame, text=title, font=("Arial", 14, "bold"))
+        lbl_title.place(relx=0.5, rely=0.3, anchor="center")
+        lbl_sub = ttk.Label(frame, text=subtitle, font=("Arial", 10))
+        lbl_sub.place(relx=0.5, rely=0.6, anchor="center")
+
+        #Make them clickable
+        frame.bind("<Button-1>", lambda e: command())
+        lbl_title.bind("<Button-1>", lambda e: command())
+        lbl_sub.bind("<Button-1>", lambda e: command())
