@@ -121,3 +121,53 @@ def selection_sort(lst):
             lst[index] = min
         index = index + 1
     return lst
+def corrolatie_berekenen(lst_1, lst_2):
+    teller = 0
+    x_1_kwadraat = 0
+    y_1_kwadraat = 0
+    gem_x = mediaan_berekenen(lst_1)
+    gem_y = mediaan_berekenen(lst_2)
+    n = len(lst_1)
+    for i in range(n):
+        x_1 = lst_1[i] - gem_x
+        y_1 = lst_2[i] - gem_y
+        teller += x_1 * y_1
+        x_1_kwadraat += x_1 ** 2
+        y_1_kwadraat += y_1 ** 2
+    noemer = (x_1_kwadraat * y_1_kwadraat) ** 0.5
+    if noemer == 0 or teller == 0:
+        return 0.0
+    else:
+        correlatie = teller / noemer
+        return correlatie
+def gradient_descent(x, y, num_iterations=10000, learning_rate=0.0001):
+    """
+    Traint de coefficienten a en b voor het lineaire regressiemodel ŷ = a + b * x met de gradient descent methode.
+
+    Args:
+        x (list): de onafhankelijke waarden van de observaties
+        y (list): de afhankelijke waarden van de observaties
+        num_iterations (int): aantal iteraties om te leren
+        learning_rate (float): leerconstante
+
+    Returns:
+        [float, float]: de berekende coefficienten
+    """
+    n = len(x)
+    iterations = 0
+    a = 0
+    b = 0
+    while True:
+        if iterations != num_iterations:
+            grad_a = 0
+            grad_b = 0
+            for i in range(n):
+                error = (a + b * x[i]) - y[i]
+                grad_a = grad_a + (2 * error)
+                grad_b = grad_b + (2 * error * x[i])
+            a = a - grad_a * learning_rate / n
+            b = b - grad_b * learning_rate / n
+            iterations = iterations + 1
+        else:
+            coefficients = [a, b]
+            return coefficients
