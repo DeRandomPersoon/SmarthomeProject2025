@@ -18,7 +18,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 5,
+          "SelectedChildIndex": 6,
           "Children": [
             {
               "$type": "Bookmark",
@@ -41,6 +41,10 @@
               "Name": "ST:1:0:{08a1bf1d-7967-4afc-8253-1790862ab8c9}"
             },
             {
+              "$type": "Bookmark",
+              "Name": "ST:128:0:{75188d03-9892-4ae2-abf1-207126247ce5}"
+            },
+            {
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "Main.py",
@@ -48,7 +52,7 @@
               "RelativeDocumentMoniker": "Main.py",
               "ToolTip": "C:\\Users\\thijs\\source\\repos\\SmarthomeProject2025\\Main.py",
               "RelativeToolTip": "Main.py",
-              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
               "WhenOpened": "2025-11-30T17:54:37.287Z",
               "EditorCaption": ""
@@ -63,8 +67,7 @@
               "RelativeToolTip": "DashBoard.py",
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.002457|",
-              "WhenOpened": "2025-11-30T17:53:55.041Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-11-30T17:53:55.041Z"
             }
           ]
         }
