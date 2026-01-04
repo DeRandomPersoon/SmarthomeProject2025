@@ -3,6 +3,8 @@ import math
 import time
 import threading
 import requests
+from ControlBoard import ControlBoard
+from SettingsPage import SettingsPage
 
 
 class App(tk.Tk):
@@ -40,14 +42,14 @@ class MainPage(tk.Frame):
         # =========================
         # + / - BUTTONS
         # =========================
-        btn_frame = tk.Frame(self, bg="#1e1e1e")
-        btn_frame.grid(row=1, column=0)
+        self.btn_frame = tk.Frame(self, bg="#1e1e1e")
+        self.btn_frame.grid(row=1, column=0)
 
-        tk.Button(btn_frame, text="+", width=4, font=("Arial", 18),
-                  command=self.increase_temp).grid(row=0, column=0, padx=15)
+        tk.Button(self.btn_frame, text="+", width=4, font=("Arial", 18),
+              command=self.increase_temp).grid(row=0, column=0, padx=15)
 
-        tk.Button(btn_frame, text="-", width=4, font=("Arial", 18),
-                  command=self.decrease_temp).grid(row=0, column=1, padx=15)
+        tk.Button(self.btn_frame, text="-", width=4, font=("Arial", 18),
+              command=self.decrease_temp).grid(row=0, column=1, padx=15)
 
         # =========================
         # WEATHER
@@ -73,6 +75,9 @@ class MainPage(tk.Frame):
             self.nav_canvases.append(c)
 
         self.draw_nav()
+        # Placeholder for pages created on nav presses
+        self.control_page = None
+        self.settings_page = None
         self.after(50, self.draw_gauge)
 
     # =========================================================
@@ -217,10 +222,18 @@ class MainPage(tk.Frame):
                 c.create_line(20, 25, 50, 25, fill="white", width=3)
                 c.create_line(20, 45, 50, 45, fill="white", width=3)
             elif i == 3:
-                c.create_line(20, 50, 20, 25, fill="white", width=3)
-                c.create_line(20, 50, 50, 50, fill="white", width=3)
-                c.create_line(20, 45, 35, 35, fill="white", width=3)
-                c.create_line(35, 35, 50, 30, fill="white", width=3)
+                # gear icon (approximate)
+                cx, cy = 35, 35
+                r = 10
+                c.create_oval(cx - r, cy - r, cx + r, cy + r, outline="white", width=3)
+                teeth = 8
+                for j in range(teeth):
+                    a = 2 * math.pi * j / teeth
+                    x1 = cx + math.cos(a) * (r + 4)
+                    y1 = cy + math.sin(a) * (r + 4)
+                    x2 = cx + math.cos(a) * (r + 8)
+                    y2 = cy + math.sin(a) * (r + 8)
+                    c.create_line(x1, y1, x2, y2, fill="white", width=2)
 
             c.bind("<Button-1>", lambda e, idx=i: self.on_nav(idx))
 
@@ -228,6 +241,58 @@ class MainPage(tk.Frame):
         print("Nav pressed:", idx)
         self.active_nav = idx
         self.draw_nav()
+        self.show_page(idx)
+
+    def show_page(self, idx):
+        # If third nav (index 2) selected, replace main content with ControlBoard
+        if idx == 2:
+            # hide main widgets
+            try:
+                self.canvas.grid_remove()
+                self.btn_frame.grid_remove()
+                self.weather_label.grid_remove()
+            except Exception:
+                pass
+
+            if self.settings_page:
+                self.settings_page.destroy()
+                self.settings_page = None
+
+            if not self.control_page:
+                self.control_page = ControlBoard(self)
+                self.control_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
+
+        elif idx == 3:
+            # Settings page
+            try:
+                self.canvas.grid_remove()
+                self.btn_frame.grid_remove()
+                self.weather_label.grid_remove()
+            except Exception:
+                pass
+
+            if self.control_page:
+                self.control_page.destroy()
+                self.control_page = None
+
+            if not self.settings_page:
+                self.settings_page = SettingsPage(self)
+                self.settings_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
+
+        else:
+            # restore main widgets if they were hidden
+            if self.control_page:
+                self.control_page.destroy()
+                self.control_page = None
+            if self.settings_page:
+                self.settings_page.destroy()
+                self.settings_page = None
+
+            # re-grid original widgets
+            self.canvas.grid(row=0, column=0, sticky="nsew", pady=20)
+            self.btn_frame.grid(row=1, column=0)
+            self.weather_label.grid(row=2, column=0, sticky="nsew", padx=40, pady=10)
+            self.draw_gauge()
 
 
 if __name__ == "__main__":
