@@ -3,6 +3,7 @@ from tkinter import ttk
 import json
 import os
 import threading
+from BasePage import BasePage
 
 try:
     from Micro import MicroController
@@ -12,20 +13,22 @@ except Exception:
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 
 
-class SettingsPage(tk.Frame):
+class SettingsPage(BasePage):
     def __init__(self, parent):
-        super().__init__(parent, bg="#1e1e1e")
+        super().__init__(parent)
         self.parent = parent
+        # Hide this page's nav; MainPage provides the visible one
+        self.hide_nav()
         self.micro = None
 
         # Load persisted settings
         self.settings = self.load_settings()
 
-        top = tk.Frame(self, bg="#1e1e1e")
+        top = tk.Frame(self.content, bg="#1e1e1e")
         top.pack(fill="x", padx=8, pady=8)
         tk.Label(top, text="Device settings", bg="#1e1e1e", fg="white", font=("Arial", 16)).pack(side="left")
 
-        form = tk.Frame(self, bg="#1e1e1e")
+        form = tk.Frame(self.content, bg="#1e1e1e")
         form.pack(fill="both", expand=True, padx=8, pady=8)
 
         tk.Label(form, text="Serial port:", bg="#1e1e1e", fg="white").grid(row=0, column=0, sticky="w")
@@ -38,16 +41,16 @@ class SettingsPage(tk.Frame):
         self.baud_entry = tk.Entry(form, textvariable=self.baud_var, width=12)
         self.baud_entry.grid(row=1, column=1, sticky="w", padx=6, pady=6)
 
-        self.info_label = tk.Label(self, text="", bg="#1e1e1e", fg="white")
+        self.info_label = tk.Label(self.content, text="", bg="#1e1e1e", fg="white")
         self.info_label.pack(pady=6)
 
-        btn_row = tk.Frame(self, bg="#1e1e1e")
+        btn_row = tk.Frame(self.content, bg="#1e1e1e")
         btn_row.pack(pady=6)
         tk.Button(btn_row, text="Refresh ports", command=self.refresh_ports).pack(side="left", padx=6)
         tk.Button(btn_row, text="Auto-detect", command=self.auto_detect).pack(side="left", padx=6)
         tk.Button(btn_row, text="Test connect", command=self.test_connect).pack(side="left", padx=6)
         tk.Button(btn_row, text="Save", command=self.save_settings).pack(side="left", padx=6)
-        tk.Button(btn_row, text="Close", command=lambda: parent.on_nav(0)).pack(side="left", padx=6)
+        tk.Button(btn_row, text="Close", command=lambda: self.on_nav(0)).pack(side="left", padx=6)
 
     def _list_ports(self):
         if MicroController:

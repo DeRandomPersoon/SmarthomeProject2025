@@ -4,6 +4,7 @@ import json
 import os
 import datetime
 import time
+from BasePage import BasePage
 
 try:
     from Micro import MicroController
@@ -12,18 +13,20 @@ except Exception:
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 
-class ControlBoard(tk.Frame):
+class ControlBoard(BasePage):
     def __init__(self, parent):
-        super().__init__(parent, bg="#1e1e1e")
+        super().__init__(parent)
         self.parent = parent
+        # Hide this page's nav; MainPage provides the visible one
+        self.hide_nav()
 
         # Top bar with Open Settings button
-        top = tk.Frame(self, bg="#1e1e1e")
+        top = tk.Frame(self.content, bg="#1e1e1e")
         top.pack(fill="x", padx=10, pady=(10, 0))
         # Settings access removed from ControlBoard (use nav bar settings icon)
 
         # Controls area with buttons and per-light times next to each button
-        self.btn_frame = tk.Frame(self, bg="#1e1e1e")
+        self.btn_frame = tk.Frame(self.content, bg="#1e1e1e")
         self.btn_frame.pack(expand=True, pady=20)
 
         self.light_buttons = []
@@ -70,7 +73,7 @@ class ControlBoard(tk.Frame):
             tk.Button(row, text="Clear slot", command=lambda n=i: self.clear_light_slot(n)).grid(row=0, column=5, padx=6)
             tk.Button(row, text="Edit schedule", command=lambda n=i: self.show_schedule_editor(n)).grid(row=0, column=6, padx=6)
 
-        self.status = tk.Label(self, text="Micro: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
+        self.status = tk.Label(self.content, text="Micro: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
 
         # microcontroller state
@@ -90,7 +93,7 @@ class ControlBoard(tk.Frame):
         self.curtain_duration_var = tk.IntVar(value=5)  # keep a default for quick edits
 
         # Log area
-        self.log_text = tk.Text(self, height=6, bg="#2a2a2a", fg="white")
+        self.log_text = tk.Text(self.content, height=6, bg="#2a2a2a", fg="white")
         self.log_text.pack(fill="x", padx=8, pady=6)
 
         # Load existing schedules if any

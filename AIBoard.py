@@ -3,6 +3,7 @@ from tkinter import ttk
 import csv
 import os
 import threading
+from BasePage import BasePage
 try:
     import algroritmes as al
 except Exception:
@@ -24,17 +25,19 @@ except Exception:
             al = None
 
 
-class AIBoard(tk.Frame):
+class AIBoard(BasePage):
     """Simple AI tools panel: fit a linear model from local CSV and predict from a user input."""
     def __init__(self, parent):
-        super().__init__(parent, bg="#1e1e1e")
+        super().__init__(parent)
         self.parent = parent
+        # Use shared layout; hide this page's nav when embedded under MainPage
+        self.hide_nav()
 
-        top = tk.Frame(self, bg="#1e1e1e")
+        top = tk.Frame(self.content, bg="#1e1e1e")
         top.pack(fill="x", padx=8, pady=8)
         tk.Label(top, text="AI Tools", bg="#1e1e1e", fg="white", font=("Arial", 16)).pack(side="left")
 
-        form = tk.Frame(self, bg="#1e1e1e")
+        form = tk.Frame(self.content, bg="#1e1e1e")
         form.pack(fill="both", expand=True, padx=8, pady=8)
 
         tk.Label(form, text="Dataset:", bg="#1e1e1e", fg="white").grid(row=0, column=0, sticky="w")
@@ -55,9 +58,9 @@ class AIBoard(tk.Frame):
         tk.Button(btn_row, text="Fit model", command=self.fit_model).pack(side="left", padx=6)
         tk.Button(btn_row, text="Predict", command=self.predict).pack(side="left", padx=6)
         tk.Button(btn_row, text="Refresh datasets", command=self.refresh).pack(side="left", padx=6)
-        tk.Button(btn_row, text="Close", command=lambda: parent.on_nav(0)).pack(side="left", padx=6)
+        tk.Button(btn_row, text="Close", command=lambda: self.on_nav(0)).pack(side="left", padx=6)
 
-        self.result = tk.Text(self, height=6, bg="#2a2a2a", fg="white")
+        self.result = tk.Text(self.content, height=6, bg="#2a2a2a", fg="white")
         self.result.pack(fill="x", padx=8, pady=8)
 
         self.a = 0.0
@@ -90,7 +93,23 @@ class AIBoard(tk.Frame):
 
     def refresh(self):
         self.dataset_combo["values"] = self._available_datasets()
-        self.result.insert("end", "Datasets refreshed\n")
+        self.safe_insert("Datasets refreshed\n")
+
+    def safe_insert(self, text):
+        """Insert text into result Text widget safely from any thread."""
+        try:
+            if getattr(self, 'result', None) and self.result.winfo_exists():
+                self.result.insert("end", text)
+                self.result.see("end")
+        except Exception:
+            pass
+
+    def safe_set_coef(self, text):
+        try:
+            if getattr(self, 'coef_label', None) and self.coef_label.winfo_exists():
+                self.coef_label.config(text=text)
+        except Exception:
+            pass
 
     def fit_model(self):
         if al is None:
@@ -113,23 +132,24 @@ class AIBoard(tk.Frame):
                         xs.append(x)
                         ys.append(y)
                 if len(xs) < 2:
-                    self.result.insert("end", f'Not enough data in {os.path.basename(dataset)}\n')
+                    self.after(0, lambda: self.safe_insert(f'Not enough data in {os.path.basename(dataset)}\n'))
                     return
                 coeff = al.gradient_descent(xs, ys, num_iterations=50000, learning_rate=0.0001)
                 self.a, self.b = coeff[0], coeff[1]
-                self.coef_label.config(text=f"Model: a={self.a:.3f}, b={self.b:.6f}")
-                self.result.insert("end", f'Fitted model from {os.path.basename(dataset)}\n  a={self.a:.3f}, b={self.b:.6f}\n')
+                # update UI on main thread
+                self.after(0, lambda: self.safe_set_coef(f"Model: a={self.a:.3f}, b={self.b:.6f}"))
+                self.after(0, lambda: self.safe_insert(f'Fitted model from {os.path.basename(dataset)}\n  a={self.a:.3f}, b={self.b:.6f}\n'))
             except FileNotFoundError:
-                self.result.insert("end", f'Dataset not found: {dataset}\n')
+                self.after(0, lambda: self.safe_insert(f'Dataset not found: {dataset}\n'))
             except Exception as e:
-                self.result.insert("end", f'Fit error: {e}\n')
+                self.after(0, lambda: self.safe_insert(f'Fit error: {e}\n'))
 
         threading.Thread(target=worker, daemon=True).start()
     def predict(self):
         try:
             x = float(self.cloud_var.get())
         except Exception:
-            self.result.insert("end", "Invalid cloud cover value\n")
+            self.safe_insert("Invalid cloud cover value\n")
             return
         y = self.a + self.b * x
-        self.result.insert("end", f'Input cloud={x} -> Predicted kW: {y:.3f}\n')
+        self.safe_insert(f'Input cloud={x} -> Predicted kW: {y:.3f}\n')

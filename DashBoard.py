@@ -3,9 +3,21 @@ import math
 import time
 import threading
 import requests
+import datetime
+import csv
+from tkinter import filedialog, messagebox
 from ControlBoard import ControlBoard
 from SettingsPage import SettingsPage
 from AIBoard import AIBoard
+from BasePage import BasePage
+
+# Try to import matplotlib for nicer plots; fall back to canvas plotting if unavailable
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+    MATPLOTLIB_AVAILABLE = True
+except Exception:
+    MATPLOTLIB_AVAILABLE = False
 
 
 class App(tk.Tk):
@@ -19,32 +31,36 @@ class App(tk.Tk):
         MainPage(self).pack(fill="both", expand=True)
 
 
-class MainPage(tk.Frame):
+class MainPage(BasePage):
     def __init__(self, parent):
-        super().__init__(parent, bg="#1e1e1e")
+        super().__init__(parent)
 
         self.temp_value = -20
         self.max_temp = 32
 
-        # Layout
-        self.rowconfigure(0, weight=4)
-        self.rowconfigure(1, weight=1)
-        self.rowconfigure(2, weight=2)
-        self.rowconfigure(3, weight=1)
-        self.columnconfigure(0, weight=1)
+        # Layout inside content
+        # rows: 0=gauge, 1=controls, 2=weather (nav is provided by BasePage)
+        self.content.rowconfigure(0, weight=4)
+        self.content.rowconfigure(1, weight=1)
+        self.content.rowconfigure(2, weight=2)
+        self.content.columnconfigure(0, weight=1)
 
         # =========================
         # GAUGE CANVAS
         # =========================
-        self.canvas = tk.Canvas(self, bg="#1e1e1e", highlightthickness=0)
+        self.canvas = tk.Canvas(self.content, bg="#1e1e1e", highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew", pady=20)
         self.canvas.bind("<Configure>", self.on_resize)
+
+
 
         # =========================
         # + / - BUTTONS
         # =========================
-        self.btn_frame = tk.Frame(self, bg="#1e1e1e")
-        self.btn_frame.grid(row=1, column=0)
+        self.btn_frame = tk.Frame(self.content, bg="#1e1e1e")
+        # keep the button frame anchored to the top so buttons start at the same height
+        # give slightly more top padding so they align nicely with the gauge
+        self.btn_frame.grid(row=1, column=0, sticky='n', pady=(18,0))
 
         tk.Button(self.btn_frame, text="+", width=4, font=("Arial", 18),
               command=self.increase_temp).grid(row=0, column=0, padx=15)
@@ -56,26 +72,17 @@ class MainPage(tk.Frame):
         # WEATHER
         # =========================
         self.weather_label = tk.Label(
-            self, bg="#2a2a2a", fg="white",
+            self.content, bg="#2a2a2a", fg="white",
             font=("Arial", 16), height=3
         )
         self.weather_label.grid(row=2, column=0, sticky="nsew", padx=40, pady=10)
+        self.weather_label.config(cursor="hand2")
+        self.weather_label.bind("<Button-1>", lambda e: self.open_weather_details())
         threading.Thread(target=self.load_weather, daemon=True).start()
 
-        # =========================
-        # NAV BAR
-        # =========================
-        nav = tk.Frame(self, bg="#1e1e1e")
-        nav.grid(row=3, column=0, pady=10)
+        # BasePage already created the nav bar at the bottom; set active tab
+        self.set_active_nav(0)
 
-        self.nav_canvases = []
-        self.active_nav = 0
-        for i in range(4):
-            c = tk.Canvas(nav, width=70, height=70, bg="#1e1e1e", highlightthickness=0)
-            c.grid(row=0, column=i, padx=15)
-            self.nav_canvases.append(c)
-
-        self.draw_nav()
         # Placeholder for pages created on nav presses
         self.control_page = None
         self.settings_page = None
@@ -170,6 +177,9 @@ class MainPage(tk.Frame):
             self.draw_gauge()
         else:
             self.flash_gauge()
+
+    # =========================================================
+    # Removed battery widget and related background worker per user request
         
     def decrease_temp(self):
         if self.temp_value < 0:
@@ -185,9 +195,6 @@ class MainPage(tk.Frame):
         time.sleep(0.08)
         self.canvas.config(bg=original)
 
-    # =========================================================
-    # WEATHER
-    # =========================================================
     def load_weather(self):
         while True:
             try:
@@ -206,54 +213,297 @@ class MainPage(tk.Frame):
             time.sleep(120)
 
     # =========================================================
-    # NAV BAR
+    # WEATHER DETAILS POPUP
     # =========================================================
-    def draw_nav(self):
-        for i, c in enumerate(self.nav_canvases):
-            c.delete("all")
+    def open_weather_details(self):
+        # create popout window (slightly larger)
+        w = tk.Toplevel(self)
+        w.title("Weather details")
+        w.geometry("900x650")
+        w.configure(bg="#1e1e1e")
 
-            if i == self.active_nav:
-                c.create_oval(5, 5, 65, 65, outline="#ff9933", width=4)
+        # Controls (presets only - mode is inferred from preset)
+        ctrl = tk.Frame(w, bg="#1e1e1e")
+        ctrl.pack(side="top", fill="x", padx=10, pady=6)
 
-            if i == 0:
-                # house with simple thermometer inside
-                c.create_polygon(18,38, 35,18, 52,38, 52,55, 18,55, fill="", outline="white", width=3)
-                # thermometer (bulb + tube)
-                c.create_oval(42,32,48,38, fill="white", outline="")
-                c.create_rectangle(44,22,46,36, fill="white", outline="")
-            elif i == 1:
-                # rising line graph: axes + polyline
-                c.create_line(18,50,18,22, fill="white", width=2)  # y axis
-                c.create_line(18,50,52,50, fill="white", width=2)  # x axis
-                c.create_line(22,44,30,36,38,30,48,22, fill="white", width=3, smooth=False)
-                c.create_oval(20,44,24,48, fill="white", outline="")
-                c.create_oval(28,36,32,40, fill="white", outline="")
-                c.create_oval(36,28,40,32, fill="white", outline="")
-                c.create_oval(46,20,50,24, fill="white", outline="")
-            elif i == 2:
-                # power (on/off) symbol
-                c.create_oval(18,18,52,52, outline="white", width=3)
-                c.create_line(35,22,35,34, fill="white", width=3)
-            elif i == 3:
-                # gear icon (approximate)
-                cx, cy = 35, 35
-                r = 10
-                c.create_oval(cx - r, cy - r, cx + r, cy + r, outline="white", width=3)
-                teeth = 8
-                for j in range(teeth):
-                    a = 2 * math.pi * j / teeth
-                    x1 = cx + math.cos(a) * (r + 4)
-                    y1 = cy + math.sin(a) * (r + 4)
-                    x2 = cx + math.cos(a) * (r + 8)
-                    y2 = cy + math.sin(a) * (r + 8)
-                    c.create_line(x1, y1, x2, y2, fill="white", width=2)
+        tk.Label(ctrl, text="Range:", bg="#1e1e1e", fg="white").pack(side="left", padx=8)
+        preset_var = tk.StringVar(value="30 days")
+        preset_menu = tk.OptionMenu(ctrl, preset_var, "")
+        preset_menu.config(bg="#2a2a2a", fg="white")
+        preset_menu.pack(side="left")
 
-            c.bind("<Button-1>", lambda e, idx=i: self.on_nav(idx))
+        def update_presets(*args):
+            # unified presets - days and years mixed; preset value determines aggregation
+            menu = preset_menu['menu']
+            menu.delete(0, 'end')
+            opts = [("2 weeks", "14 days"), ("1 month", "30 days"), ("3 months", "90 days"), ("6 months", "180 days"), ("1 year", "1 years"), ("5 years", "5 years")]
+            for label, val in opts:
+                menu.add_command(label=label, command=lambda v=val: preset_var.set(v))
+            preset_var.set("30 days")
+
+        update_presets()
+
+        refresh_btn = tk.Button(ctrl, text="Refresh", command=lambda: load_and_plot())
+        refresh_btn.pack(side="left", padx=6)
+
+        download_btn = tk.Button(ctrl, text="Download CSV", command=lambda: self.download_current_csv())
+        download_btn.pack(side="right")
+
+        # container for plot
+        plot_frame = tk.Frame(w, bg="#1e1e1e")
+        plot_frame.pack(fill="both", expand=True, padx=10, pady=6)
+
+        fig = None
+        ax = None
+        if MATPLOTLIB_AVAILABLE:
+            fig = plt.Figure(figsize=(8,5))
+            ax = fig.add_subplot(111)
+            canvas_widget = FigureCanvasTkAgg(fig, master=plot_frame)
+            canvas_widget.get_tk_widget().pack(fill="both", expand=True)
+        else:
+            canvas_widget = tk.Canvas(plot_frame, bg="#2a2a2a")
+            canvas_widget.pack(fill="both", expand=True)
+
+        # keep state for download & redraw
+        self._weather_detail_state = {
+            "preset_var": preset_var,
+            "canvas": canvas_widget,
+            "fig": fig,
+            "ax": ax,
+            "widget_window": w
+        }
+
+        def load_and_plot():
+            # infer mode and range from preset value
+            pv = preset_var.get() or "30 days"
+            if pv.endswith('days'):
+                try:
+                    days = int(pv.split()[0]) if ' ' in pv else int(pv.replace('days','').strip())
+                except Exception:
+                    # fallback: extract first number
+                    import re
+                    m = re.search(r"(\d+)", pv)
+                    days = int(m.group(1)) if m else 30
+                mode = 'daily'
+                # limit check
+                if days > 3650:
+                    messagebox.showinfo("Range out of scope","Selected range is too large. Please choose a shorter range (up to 10 years).")
+                    # clear current plot
+                    self._weather_detail_state['current_data'] = ([], [], [])
+                    self._weather_detail_state['mode'] = mode
+                    self.render_plot(canvas_widget, [], [], [], self._weather_detail_state)
+                    return
+                end = datetime.date.today()
+                start = end - datetime.timedelta(days=max(1, days)-1)
+                dates, tmin, tmax = self.fetch_weather_range(start, end)
+            else:
+                # assume years
+                try:
+                    years = int(pv.split()[0]) if ' ' in pv else int(pv.replace('years','').strip())
+                except Exception:
+                    years = 1
+                mode = 'monthly'
+                # limit check
+                if years > 50:
+                    messagebox.showinfo("Range out of scope","Selected range is too large. Please choose a shorter range (up to 50 years).")
+                    self._weather_detail_state['current_data'] = ([], [], [])
+                    self._weather_detail_state['mode'] = mode
+                    self.render_plot(canvas_widget, [], [], [], self._weather_detail_state)
+                    return
+                end = datetime.date.today()
+                start = end - datetime.timedelta(days=years*365)
+                dates, tmin, tmax = self.fetch_weather_range(start, end)
+                dates, tmin, tmax = self.aggregate_monthly(dates, tmin, tmax)
+
+            # if no data returned, inform the user and clear plot
+            if not dates:
+                messagebox.showinfo("No data","No data available for the selected range. Try a shorter range or check your network.")
+                self._weather_detail_state['current_data'] = ([], [], [])
+                self._weather_detail_state['mode'] = mode
+                self.render_plot(canvas_widget, [], [], [], self._weather_detail_state)
+                return
+
+            # store current dataset and mode
+            self._weather_detail_state['current_data'] = (dates, tmin, tmax)
+            self._weather_detail_state['mode'] = mode
+
+            self.render_plot(canvas_widget, dates, tmin, tmax, self._weather_detail_state)
+
+            if MATPLOTLIB_AVAILABLE and fig is not None:
+                fig.canvas.draw()
+
+        # initial load
+        load_and_plot()
+
+    def fetch_weather_range(self, start_date, end_date):
+        s = start_date.isoformat()
+        e = end_date.isoformat()
+        url = (
+            f"https://api.open-meteo.com/v1/forecast?"
+            f"latitude=52.37&longitude=4.89&daily=temperature_2m_max,temperature_2m_min"
+            f"&start_date={s}&end_date={e}&timezone=Europe%2FAmsterdam"
+        )
+        try:
+            data = requests.get(url, timeout=10).json()
+            dates = [datetime.date.fromisoformat(d) for d in data.get("daily", {}).get("time", [])]
+            tmin = data.get("daily", {}).get("temperature_2m_min", [])
+            tmax = data.get("daily", {}).get("temperature_2m_max", [])
+            return dates, tmin, tmax
+        except Exception:
+            return [], [], []
+
+    def aggregate_monthly(self, dates, tmin, tmax):
+        monthly = {}
+        for d, mn, mx in zip(dates, tmin, tmax):
+            key = (d.year, d.month)
+            if key not in monthly:
+                monthly[key] = {"tmin": [], "tmax": []}
+            monthly[key]["tmin"].append(mn)
+            monthly[key]["tmax"].append(mx)
+        # sort by year/month and construct aligned lists
+        sorted_items = sorted(monthly.items())
+        out_dates = [datetime.date(y, m, 1) for (y, m), _ in sorted_items]
+        out_tmin = [sum(v["tmin"]) / len(v["tmin"]) for _, v in sorted_items]
+        out_tmax = [sum(v["tmax"]) / len(v["tmax"]) for _, v in sorted_items]
+        return out_dates, out_tmin, out_tmax
+
+    def render_plot(self, canvas, dates, tmin, tmax, state):
+        if not dates:
+            if MATPLOTLIB_AVAILABLE and state.get('fig'):
+                ax = state['ax']
+                ax.clear()
+                ax.text(0.5,0.5,"No data", ha="center")
+                state['fig'].canvas.draw()
+            else:
+                canvas.delete("all")
+                canvas.create_text(200,100,text="No data", fill="white")
+            return
+
+        mode = state.get('mode', 'daily')  # set by load_and_plot
+
+        if MATPLOTLIB_AVAILABLE and state.get('fig'):
+            ax = state['ax']
+            ax.clear()
+            # convert dates for matplotlib if necessary and add axis ticks/labels
+            try:
+                import matplotlib.dates as mdates
+                import matplotlib.ticker as mticker
+                x = mdates.date2num(dates)
+                ax.plot_date(x, tmin, '-', label="Min")
+                ax.plot_date(x, tmax, '-', label="Max")
+                ax.fill_between(x, tmin, tmax, alpha=0.2)
+
+                # Y axis ticks and limits (ensure 0°C visible)
+                miny = min(tmin)
+                maxy = max(tmax)
+                miny = min(miny, 0)
+                maxy = max(maxy, 0)
+                yrange = maxy - miny if maxy != miny else 1
+                ax.set_ylim(miny - 0.05*yrange, maxy + 0.05*yrange)
+                ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6))
+
+                # draw 0°C line
+                ax.axhline(0, color='#00ffff', linestyle='--', linewidth=1, alpha=0.9)
+
+                # X axis: prefer sparse labeling (max ~6 labels)
+                ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=6))
+                ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
+
+                # If monthly mode, prefer monthly formatting (keeps ticks readable)
+                if mode == 'monthly':
+                    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+                    ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
+            except Exception:
+                # fallback to plotting raw dates (matplotlib can often handle datetime.date directly)
+                ax.plot(dates, tmin, label="Min")
+                ax.plot(dates, tmax, label="Max")
+                ax.fill_between(dates, tmin, tmax, alpha=0.2)
+                try:
+                    # draw zero line if in range
+                    miny = min(tmin)
+                    maxy = max(tmax)
+                    if miny <= 0 <= maxy:
+                        ax.axhline(0, color='#00ffff', linestyle='--', linewidth=1, alpha=0.9)
+                except Exception:
+                    pass
+            ax.legend()
+            ax.set_title("Temperature (min/max)")
+            ax.set_ylabel("°C")
+            state['fig'].autofmt_xdate()
+        else:
+            # fallback canvas drawing
+            canvas.delete("all")
+            w = canvas.winfo_width() or 600
+            h = canvas.winfo_height() or 300
+            pad = 56
+            n = len(dates)
+            miny = min(tmin)
+            maxy = max(tmax)
+            yrange = maxy - miny if (maxy - miny) != 0 else 1
+            xs = [pad + i*(w-2*pad)/(n-1) for i in range(n)] if n>1 else [w/2]
+            ys_min = [h - pad - ((mn - miny)/yrange)*(h-2*pad) for mn in tmin]
+            ys_max = [h - pad - ((mx - miny)/yrange)*(h-2*pad) for mx in tmax]
+            # axes
+            canvas.create_line(pad, pad, pad, h-pad, fill="white")
+            canvas.create_line(pad, h-pad, w-pad, h-pad, fill="white")
+            # Y axis labels (5 ticks)
+            ticks = 5
+            for i in range(ticks):
+                frac = i/(ticks-1) if ticks>1 else 0
+                val = maxy - frac*(maxy - miny)
+                y = pad + frac*(h-2*pad)
+                canvas.create_text(pad-8, y, text=f"{val:.1f}", fill='white', anchor='e', font=(None,9))
+            # draw lines
+            for i in range(n-1):
+                canvas.create_line(xs[i], ys_min[i], xs[i+1], ys_min[i+1], fill="#00aaff", width=2)
+                canvas.create_line(xs[i], ys_max[i], xs[i+1], ys_max[i+1], fill="#ff9933", width=2)
+            # fill polygon
+            points = []
+            for x,y in zip(xs, ys_max):
+                points.append((x,y))
+            for x,y in reversed(list(zip(xs, ys_min))):
+                points.append((x,y))
+            flat = [coord for p in points for coord in p]
+            if flat:
+                canvas.create_polygon(*flat, fill="#888888", stipple="gray25", outline="")
+            # zero line if within range
+            if miny <= 0 <= maxy:
+                y0 = h - pad - ((0 - miny)/yrange)*(h-2*pad)
+                canvas.create_line(pad, y0, w-pad, y0, fill="#00ffff", dash=(4,2))
+            # X labels: sparse every step
+            max_labels = 6
+            step = max(1, n//max_labels)
+            for i in range(0, n, step):
+                d = dates[i]
+                lbl = d.strftime('%Y-%m-%d' if mode=='daily' else '%Y-%m')
+                canvas.create_text(xs[i], h - pad + 12, text=lbl, fill='white', anchor='n', font=(None,8))
+
+
+    def download_current_csv(self):
+        state = getattr(self, "_weather_detail_state", None)
+        if not state or 'current_data' not in state:
+            messagebox.showinfo("No data","No data to download")
+            return
+        dates, tmin, tmax = state['current_data']
+        path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files","*.csv")])
+        if not path:
+            return
+        try:
+            with open(path, "w", newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(["date","min","max"])
+                for d, mn, mx in zip(dates, tmin, tmax):
+                    writer.writerow([d.isoformat(), mn, mx])
+            messagebox.showinfo("Saved", f"Saved to {path}")
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    # =========================================================
+    # Nav drawing is handled by BasePage
 
     def on_nav(self, idx):
         print("Nav pressed:", idx)
-        self.active_nav = idx
-        self.draw_nav()
+        self.set_active_nav(idx)
         self.show_page(idx)
 
     def show_page(self, idx):
@@ -274,7 +524,8 @@ class MainPage(tk.Frame):
                 self.settings_page = None
 
             if not self.ai_page:
-                self.ai_page = AIBoard(self)
+                self.ai_page = AIBoard(self.content)
+                # this page has its own content; its nav is hidden in its __init__
                 self.ai_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
             return
 
@@ -293,7 +544,7 @@ class MainPage(tk.Frame):
                 self.settings_page = None
 
             if not self.control_page:
-                self.control_page = ControlBoard(self)
+                self.control_page = ControlBoard(self.content)
                 self.control_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
 
         elif idx == 3:
@@ -310,7 +561,7 @@ class MainPage(tk.Frame):
                 self.control_page = None
 
             if not self.settings_page:
-                self.settings_page = SettingsPage(self)
+                self.settings_page = SettingsPage(self.content)
                 self.settings_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
 
         else:
@@ -330,9 +581,6 @@ class MainPage(tk.Frame):
             self.btn_frame.grid(row=1, column=0)
             self.weather_label.grid(row=2, column=0, sticky="nsew", padx=40, pady=10)
             self.draw_gauge()
-
-
+            
 if __name__ == "__main__":
     App().mainloop()
-
-###test
