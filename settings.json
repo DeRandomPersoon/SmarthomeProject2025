@@ -1,4 +1,5 @@
 {
-  "serial_port": "COM1",
-  "baud": 115200
+  "pico_ip": "192.168.2.98",
+  "baud": 115200,
+  "serial_port": ""
 }

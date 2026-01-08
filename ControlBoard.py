@@ -11,6 +11,11 @@ try:
 except Exception:
     MicroController = None
 
+try:
+    from WiFiController import WiFiController
+except Exception:
+    WiFiController = None
+
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 
 class ControlBoard(BasePage):
@@ -73,8 +78,17 @@ class ControlBoard(BasePage):
             tk.Button(row, text="Clear slot", command=lambda n=i: self.clear_light_slot(n)).grid(row=0, column=5, padx=6)
             tk.Button(row, text="Edit schedule", command=lambda n=i: self.show_schedule_editor(n)).grid(row=0, column=6, padx=6)
 
-        self.status = tk.Label(self.content, text="Micro: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
+        self.status = tk.Label(self.content, text="Pico: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
+
+        # WiFi connection controls
+        self.ip_var = tk.StringVar(value="192.168.2.98")
+        ip_row = tk.Frame(self.content, bg="#1e1e1e")
+        ip_row.pack(pady=(0,10))
+        tk.Label(ip_row, text="Pico IP:", bg="#1e1e1e", fg="white").pack(side="left", padx=(0,4))
+        ip_entry = tk.Entry(ip_row, textvariable=self.ip_var, width=15)
+        ip_entry.pack(side="left", padx=4)
+        tk.Button(ip_row, text="Connect", command=self._connect_wifi).pack(side="left", padx=6)
 
         # microcontroller state
         self.micro = None
@@ -105,15 +119,14 @@ class ControlBoard(BasePage):
         threading.Thread(target=self._schedule_worker, daemon=True).start()
 
         # Try auto-connect using saved settings (if available)
-        if MicroController:
+        if WiFiController:
             try:
                 if os.path.exists(SETTINGS_FILE):
                     with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                         s = json.load(f)
-                        port = s.get("serial_port") or ""
-                        baud = s.get("baud", 115200)
-                        if port:
-                            threading.Thread(target=self._connect_worker, args=(port, baud), daemon=True).start()
+                        ip = s.get("pico_ip") or "192.168.2.98"
+                        self.ip_var.set(ip)
+                        threading.Thread(target=self._connect_wifi_worker, args=(ip,), daemon=True).start()
             except Exception:
                 pass
 
@@ -129,6 +142,88 @@ class ControlBoard(BasePage):
                 self.status.config(text="Micro: connect failed")
         except Exception:
             self.status.config(text="Micro: error")
+
+    def _refresh_ports(self):
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        try:
+            ports = MicroController.list_ports() or []
+        except Exception:
+            ports = []
+        menu = self.port_menu['menu']
+        menu.delete(0, 'end')
+        for p in ports:
+            menu.add_command(label=p, command=lambda v=p: self.port_var.set(v))
+        if ports:
+            if not self.port_var.get():
+                self.port_var.set(ports[0])
+            self.status.config(text=f"Ports: {', '.join(ports)}")
+        else:
+            self.port_var.set("")
+            self.status.config(text="No ports found")
+
+    def _connect_selected(self):
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        port = self.port_var.get().strip()
+        if not port:
+            self.status.config(text="Select a port first")
+            return
+        self.status.config(text=f"Connecting {port}...")
+        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
+
+    def _connect_wifi(self):
+        """Connect to Pico W over WiFi."""
+        if not WiFiController:
+            self.status.config(text="requests library not installed")
+            return
+        ip = self.ip_var.get().strip()
+        if not ip:
+            self.status.config(text="Enter Pico IP first")
+            return
+        self.status.config(text=f"Connecting {ip}...")
+        threading.Thread(target=self._connect_wifi_worker, args=(ip,), daemon=True).start()
+
+    def _connect_wifi_worker(self, ip):
+        """Connect to Pico W in background."""
+        try:
+            wc = WiFiController(host=ip, port=80)
+            ok = wc.connect(ip, 80)
+            if ok:
+                self.micro = wc
+                self.status.config(text=f"Pico: connected ({ip})")
+                # Save IP to settings
+                try:
+                    settings = {"pico_ip": ip, "baud": 115200}
+                    if os.path.exists(SETTINGS_FILE):
+                        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                            settings.update(json.load(f))
+                    settings["pico_ip"] = ip
+                    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                        json.dump(settings, f, indent=2)
+                except Exception:
+                    pass
+            else:
+                self.status.config(text="Pico: connect failed")
+        except Exception as e:
+            self.status.config(text=f"Pico: error ({e})")
+
+    def _connect_auto(self):
+        """Auto-detect first available port and connect."""
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        try:
+            port = MicroController.auto_detect()
+        except Exception:
+            port = None
+        if not port:
+            self.status.config(text="No port found")
+            return
+        self.status.config(text=f"Connecting {port}...")
+        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
 
     def toggle_light(self, idx):
         # If microcontroller present, send command; otherwise simulate local toggle
