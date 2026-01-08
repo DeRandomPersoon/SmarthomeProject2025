@@ -5,6 +5,7 @@ import threading
 import requests
 from ControlBoard import ControlBoard
 from SettingsPage import SettingsPage
+from AIBoard import AIBoard
 
 
 class App(tk.Tk):
@@ -78,6 +79,7 @@ class MainPage(tk.Frame):
         # Placeholder for pages created on nav presses
         self.control_page = None
         self.settings_page = None
+        self.ai_page = None
         self.after(50, self.draw_gauge)
 
     # =========================================================
@@ -214,13 +216,24 @@ class MainPage(tk.Frame):
                 c.create_oval(5, 5, 65, 65, outline="#ff9933", width=4)
 
             if i == 0:
-                c.create_polygon(35, 10, 50, 35, 35, 60, 20, 35, fill="white")
+                # house with simple thermometer inside
+                c.create_polygon(18,38, 35,18, 52,38, 52,55, 18,55, fill="", outline="white", width=3)
+                # thermometer (bulb + tube)
+                c.create_oval(42,32,48,38, fill="white", outline="")
+                c.create_rectangle(44,22,46,36, fill="white", outline="")
             elif i == 1:
-                c.create_rectangle(20, 20, 50, 50, outline="white", width=3)
-                c.create_rectangle(50, 30, 60, 40, outline="white", width=3)
+                # rising line graph: axes + polyline
+                c.create_line(18,50,18,22, fill="white", width=2)  # y axis
+                c.create_line(18,50,52,50, fill="white", width=2)  # x axis
+                c.create_line(22,44,30,36,38,30,48,22, fill="white", width=3, smooth=False)
+                c.create_oval(20,44,24,48, fill="white", outline="")
+                c.create_oval(28,36,32,40, fill="white", outline="")
+                c.create_oval(36,28,40,32, fill="white", outline="")
+                c.create_oval(46,20,50,24, fill="white", outline="")
             elif i == 2:
-                c.create_line(20, 25, 50, 25, fill="white", width=3)
-                c.create_line(20, 45, 50, 45, fill="white", width=3)
+                # power (on/off) symbol
+                c.create_oval(18,18,52,52, outline="white", width=3)
+                c.create_line(35,22,35,34, fill="white", width=3)
             elif i == 3:
                 # gear icon (approximate)
                 cx, cy = 35, 35
@@ -244,6 +257,27 @@ class MainPage(tk.Frame):
         self.show_page(idx)
 
     def show_page(self, idx):
+        # AI page (index 1)
+        if idx == 1:
+            try:
+                self.canvas.grid_remove()
+                self.btn_frame.grid_remove()
+                self.weather_label.grid_remove()
+            except Exception:
+                pass
+
+            if self.control_page:
+                self.control_page.destroy()
+                self.control_page = None
+            if self.settings_page:
+                self.settings_page.destroy()
+                self.settings_page = None
+
+            if not self.ai_page:
+                self.ai_page = AIBoard(self)
+                self.ai_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
+            return
+
         # If third nav (index 2) selected, replace main content with ControlBoard
         if idx == 2:
             # hide main widgets
@@ -287,6 +321,9 @@ class MainPage(tk.Frame):
             if self.settings_page:
                 self.settings_page.destroy()
                 self.settings_page = None
+            if self.ai_page:
+                self.ai_page.destroy()
+                self.ai_page = None
 
             # re-grid original widgets
             self.canvas.grid(row=0, column=0, sticky="nsew", pady=20)
