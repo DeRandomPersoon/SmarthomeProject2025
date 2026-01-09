@@ -43,6 +43,10 @@ class WiFiController:
             raise RuntimeError("Not connected to Pico W")
         
         t = timeout or self.timeout
+        # Use longer timeout for buzzer pulse (needs 2+ seconds)
+        if cmd == "BUZZER PULSE":
+            t = 5.0
+        
         try:
             if cmd == "PING":
                 resp = requests.get(f"{self.base_url}/state", timeout=t)
@@ -50,12 +54,21 @@ class WiFiController:
                 resp = requests.get(f"{self.base_url}/toggle", timeout=t)
             elif cmd == "STATE 1":
                 resp = requests.get(f"{self.base_url}/state", timeout=t)
+            elif cmd == "BUZZER ON":
+                resp = requests.get(f"{self.base_url}/buzzer/on", timeout=t)
+            elif cmd == "BUZZER OFF":
+                resp = requests.get(f"{self.base_url}/buzzer/off", timeout=t)
+            elif cmd == "BUZZER PULSE":
+                resp = requests.get(f"{self.base_url}/buzzer/pulse", timeout=t)
+            elif cmd == "BUTTON CHECK":
+                resp = requests.get(f"{self.base_url}/button/check", timeout=t)
             else:
                 return ""
             
             if resp.status_code == 200:
                 data = resp.json()
-                return data.get("state", "")
+                # Try to return state, buzzer, pressed, or temp value
+                return data.get("state", data.get("buzzer", data.get("pressed", data.get("temp", ""))))
             return ""
         except Exception as e:
             print(f"WiFi command failed: {e}")

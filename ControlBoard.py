@@ -78,6 +78,24 @@ class ControlBoard(BasePage):
             tk.Button(row, text="Clear slot", command=lambda n=i: self.clear_light_slot(n)).grid(row=0, column=5, padx=6)
             tk.Button(row, text="Edit schedule", command=lambda n=i: self.show_schedule_editor(n)).grid(row=0, column=6, padx=6)
 
+        # Alarm button
+        alarm_row = tk.Frame(self.btn_frame, bg="#1e1e1e")
+        alarm_row.pack(pady=8, anchor='center')
+        self.alarm_button = tk.Button(
+            alarm_row,
+            text="Alarm",
+            width=14,
+            height=2,
+            font=("Arial", 16),
+            bg="#8B0000",
+            fg="white",
+            command=self.trigger_alarm,
+        )
+        self.alarm_button.grid(row=0, column=0, padx=(0,10))
+        self.alarm_button._orig_bg = self.alarm_button.cget('bg')
+        tk.Label(alarm_row, text="Trigger buzzer alarm", bg="#1e1e1e", fg="white").grid(row=0, column=1, columnspan=2, padx=10)
+        tk.Button(alarm_row, text="Edit schedule", command=self.show_alarm_schedule_editor).grid(row=0, column=3, padx=6)
+
         self.status = tk.Label(self.content, text="Pico: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
 
@@ -98,7 +116,8 @@ class ControlBoard(BasePage):
         # lights: list of {'light': idx, 'on': 'HH:MM', 'off': 'HH:MM'}
         # curtains: list of {'open': 'HH:MM', 'close': 'HH:MM', 'duration': seconds, 'last_open': None, 'last_close': None}
         # heating: list of {'on': 'HH:MM', 'off': 'HH:MM'}
-        self.schedules = {"lights": [], "curtains": [], "heating": []}
+        # alarms: list of {'time': 'HH:MM', 'last_triggered': None}
+        self.schedules = {"lights": [], "curtains": [], "heating": [], "alarms": []}
         # three controllable devices now: light (idx 0), curtain (idx 1), heating (idx 2)
         self.light_states = [False] * 3
         self.curtain_states = [False] * 3
@@ -269,6 +288,8 @@ class ControlBoard(BasePage):
                     sched = s.get('schedules') or {}
                     self.schedules['lights'] = sched.get('lights', [])
                     self.schedules['curtains'] = sched.get('curtains', [])
+                    self.schedules['heating'] = sched.get('heating', [])
+                    self.schedules['alarms'] = sched.get('alarms', [])
         except Exception:
             pass
         # reflect per-light slots in the on/off fields
@@ -644,6 +665,57 @@ class ControlBoard(BasePage):
         else:
             self.log('No inline curtain list available - use Edit schedule on the device to remove slots')
 
+    def show_alarm_schedule_editor(self):
+        """Open a popup window to edit alarm schedules."""
+        popup = tk.Toplevel(self)
+        popup.title("Alarm schedules")
+        popup.geometry("420x300")
+
+        lb = tk.Listbox(popup, width=48, height=8)
+        lb.pack(padx=8, pady=8)
+
+        tk.Label(popup, text="Set alarm times to trigger the buzzer automatically.", bg="#ffffff", fg="#000000").pack(padx=8, pady=(0,6))
+
+        def refresh_list():
+            lb.delete(0, 'end')
+            for i, s in enumerate(self.schedules.get('alarms', [])):
+                lb.insert('end', f"{i}: ALARM at {s['time']}")
+
+        time_var = tk.StringVar(value="07:00")
+
+        row = tk.Frame(popup)
+        row.pack(padx=8, pady=4)
+        tk.Label(row, text="Time (HH:MM):").grid(row=0, column=0)
+        tk.Entry(row, textvariable=time_var, width=8).grid(row=0, column=1, padx=6)
+
+        def add_slot():
+            try:
+                _ = datetime.datetime.strptime(time_var.get(), '%H:%M')
+            except Exception:
+                self.log('Invalid time format (use HH:MM)')
+                return
+            self.schedules['alarms'].append({'time': time_var.get(), 'last_triggered': None})
+            self._save_schedules()
+            refresh_list()
+            self.log(f'Added alarm at {time_var.get()}')
+
+        def remove_selected():
+            sel = lb.curselection()
+            if not sel:
+                return
+            try:
+                idx = sel[0]
+                alarm = self.schedules['alarms'].pop(idx)
+                self._save_schedules()
+                refresh_list()
+                self.log(f'Removed alarm at {alarm["time"]}')
+            except Exception:
+                pass
+
+        tk.Button(popup, text="Add alarm", command=add_slot).pack(padx=6, pady=6)
+        tk.Button(popup, text="Remove selected", command=remove_selected).pack(padx=6)
+        refresh_list()
+
     # -------------------- scheduler loop --------------------
     def _schedule_worker(self):
         while not getattr(self, '_scheduler_stop', False):
@@ -694,6 +766,22 @@ class ControlBoard(BasePage):
                         self.close_curtain(1, reason='schedule')
                         slot['last_close'] = now.date().isoformat()
                         self._save_schedules()
+
+            # alarms
+            for slot in self.schedules.get('alarms', []):
+                try:
+                    alarm_t = datetime.datetime.strptime(slot['time'], '%H:%M').time()
+                except Exception:
+                    continue
+                # trigger at exact minute (once per day)
+                if now_time.hour == alarm_t.hour and now_time.minute == alarm_t.minute:
+                    if slot.get('last_triggered') != now.date().isoformat():
+                        self._trigger_scheduled_alarm(reason='schedule')
+                        slot['last_triggered'] = now.date().isoformat()
+                        self._save_schedules()
+
+            # Check physical button presses from Pico
+            self._check_physical_button()
 
             # sleep - check every 20 seconds
             for _ in range(4):
@@ -746,6 +834,50 @@ class ControlBoard(BasePage):
             new_state = not self.light_states[2]
             self.set_light_state(2, new_state, reason='manual')
 
+    def trigger_alarm(self):
+        """Trigger buzzer alarm on Pico W."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            self.status.config(text="Triggering alarm...")
+            def worker():
+                try:
+                    resp = self.micro.send_command("BUZZER PULSE")
+                    if resp == "PULSED" or resp:
+                        self.log("Alarm triggered")
+                        self.status.config(text="Alarm triggered")
+                    else:
+                        self.log("Alarm trigger failed")
+                        self.status.config(text="Alarm trigger failed")
+                except Exception as e:
+                    self.log(f"Alarm error: {e}")
+                    self.status.config(text="Alarm error")
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            self.status.config(text="Pico not connected")
+            self.log("Alarm: Pico not connected")
+
+    def _trigger_scheduled_alarm(self, reason=''):
+        """Internal method to trigger alarm from scheduler."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            try:
+                resp = self.micro.send_command("BUZZER PULSE")
+                if resp:
+                    self.log(f"Scheduled alarm triggered ({reason})")
+                else:
+                    self.log(f"Scheduled alarm failed ({reason})")
+            except Exception as e:
+                self.log(f"Scheduled alarm error: {e}")
+        else:
+            self.log(f"Scheduled alarm skipped - Pico not connected ({reason})")
+    def _check_physical_button(self):
+        """Check if physical button on Pico was pressed and trigger alarm."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            try:
+                resp = self.micro.send_command("BUTTON CHECK")
+                if resp is True or resp == True or resp == "True" or str(resp).lower() == "true":
+                    self.log("Physical button pressed - triggering alarm")
+                    self.trigger_alarm()
+            except Exception:
+                pass  # Silently ignore errors to avoid log spam
     def close_curtain(self, idx, reason=''):
         self.curtain_states[idx] = False
         self._update_curtain_visual(idx)

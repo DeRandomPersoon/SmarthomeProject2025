@@ -1,21 +1,6 @@
-"""WiFi HTTP server for Pico W: toggle GP15 over the network.
+"""WiFi HTTP server for Pico W: control LED, buzzer, and handle button presses.
 
-Upload as main.py. Edit WiFi credentials below, then:
-  - Connect to http://pico.local/toggle (or http://<pico-ip>/toggle)
-  - Endpoints:
-      /toggle     -> flips GP15, returns {"state":"ON"} or {"state":"OFF"}
-      /on         -> sets GP15 high, returns {"state":"ON"}
-      /off        -> sets GP15 low, returns {"state":"OFF"}
-      /state      -> returns {"state":"ON"} or {"state":"OFF"}
-      /buzzer/on  -> activates buzzer on GP6 for a few seconds
-      /buzzer/off -> deactivates buzzer on GP6
-      /temp/inc   -> increase temperature (decrease value by 1, as shown value is *-1)
-      /temp/dec   -> decrease temperature (increase value by 1)
-
-Setup:
-  1. Set SSID and PASSWORD below.
-  2. Upload as main.py.
-  3. Connect to the Pico's mDNS hostname (pico.local) or find its IP in your router.
+Upload as main.py to your Pico W.
 """
 
 import network
@@ -25,17 +10,17 @@ from machine import Pin
 import utime
 
 # ===== WiFi Configuration =====
-SSID = "H368N94FF9A"       # Change to your WiFi SSID
-PASSWORD = "45EEFEFE9547"   # Change to your WiFi password
+SSID = "H368N94FF9A"
+PASSWORD = "45EEFEFE9547"
 
 # ===== GPIO Setup =====
 LED = Pin(15, Pin.OUT)
 BUZZER = Pin(6, Pin.OUT)
-BUTTON_GREEN = Pin(14, Pin.IN, Pin.PULL_DOWN)  # Alarm toggle button
+BUTTON_GREEN = Pin(14, Pin.IN, Pin.PULL_DOWN)
 
 # Button state tracking
-button_pressed = False  # Flag to track if button was pressed since last check
-last_button_time = 0  # For debouncing
+button_pressed = False
+last_button_time = 0
 
 
 def connect_wifi():
@@ -64,8 +49,11 @@ def handle_request(request_line):
             return "400 Bad Request", ""
         method = parts[0]
         path = parts[1]
+        
         if method != "GET":
             return "405 Method Not Allowed", ""
+        
+        # LED endpoints
         if path == "/toggle":
             if LED.value():
                 LED.value(0)
@@ -73,37 +61,50 @@ def handle_request(request_line):
             else:
                 LED.value(1)
                 state = "ON"
+            print(f"LED toggled to {state}")
             return "200 OK", json.dumps({"state": state})
         elif path == "/on":
             LED.value(1)
+            print("LED turned ON")
             return "200 OK", json.dumps({"state": "ON"})
         elif path == "/off":
             LED.value(0)
+            print("LED turned OFF")
             return "200 OK", json.dumps({"state": "OFF"})
         elif path == "/state":
             state = "ON" if LED.value() else "OFF"
             return "200 OK", json.dumps({"state": state})
+        
+        # Buzzer endpoints
         elif path == "/buzzer/on":
             BUZZER.value(1)
+            print("Buzzer turned ON")
             return "200 OK", json.dumps({"buzzer": "ON"})
         elif path == "/buzzer/off":
             BUZZER.value(0)
+            print("Buzzer turned OFF")
             return "200 OK", json.dumps({"buzzer": "OFF"})
         elif path == "/buzzer/pulse":
-            # Activate buzzer for 2 seconds then turn off
+            print("Buzzer pulse starting...")
             BUZZER.value(1)
             utime.sleep(2)
             BUZZER.value(0)
+            print("Buzzer pulse completed")
             return "200 OK", json.dumps({"buzzer": "PULSED"})
+        
+        # Button check endpoint
         elif path == "/button/check":
-            # Check if button was pressed and reset flag
             pressed = button_pressed
             if pressed:
                 button_pressed = False
+                print("Button press detected and cleared")
             return "200 OK", json.dumps({"pressed": pressed})
+        
         else:
             return "404 Not Found", ""
+    
     except Exception as e:
+        print(f"Error handling request: {e}")
         return "500 Internal Server Error", str(e)
 
 
@@ -111,7 +112,8 @@ def button_handler(pin):
     """Handle button interrupts."""
     global button_pressed, last_button_time
     current_time = utime.ticks_ms()
-    # Debounce: ignore if less than 200ms since last press
+    
+    # Debounce
     if utime.ticks_diff(current_time, last_button_time) < 200:
         return
     
@@ -119,14 +121,15 @@ def button_handler(pin):
         button_pressed = True
         last_button_time = current_time
         print("=" * 50)
-        print(f">>> GREEN BUTTON PRESSED <<<")
-        print(f">>> Button flag set - waiting for PC to poll")
+        print("GREEN BUTTON PRESSED")
+        print("Button flag set - waiting for PC to poll")
         print("=" * 50)
 
 
 def setup_buttons():
     """Set up button interrupt handlers."""
     BUTTON_GREEN.irq(trigger=Pin.IRQ_RISING, handler=button_handler)
+    print("Button interrupt configured")
 
 
 def run_server(wlan, port=80):
@@ -147,12 +150,13 @@ def run_server(wlan, port=80):
             request = conn.recv(1024).decode()
             if request:
                 request_line = request.split("\r\n")[0]
+                print(f"Request: {request_line}")
                 status, body = handle_request(request_line)
                 response = f"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}"
                 conn.sendall(response.encode())
             conn.close()
         except Exception as e:
-            print("Error:", e)
+            print(f"Server error: {e}")
             try:
                 conn.close()
             except:
@@ -160,7 +164,9 @@ def run_server(wlan, port=80):
 
 
 if __name__ == "__main__":
+    print("=" * 50)
     print("Starting WiFi Pico server...")
+    print("=" * 50)
     wlan = connect_wifi()
     if wlan:
         run_server(wlan)

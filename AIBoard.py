@@ -4,6 +4,10 @@ import csv
 import os
 import threading
 from BasePage import BasePage
+import openmeteo_requests
+import requests_cache
+from retry_requests import retry
+
 try:
     import algroritmes as al
 except Exception:
@@ -47,8 +51,16 @@ class AIBoard(BasePage):
 
         tk.Label(form, text="Cloud cover % (0-100):", bg="#1e1e1e", fg="white").grid(row=1, column=0, sticky="w")
         self.cloud_var = tk.DoubleVar(value=50.0)
-        self.cloud_entry = tk.Entry(form, textvariable=self.cloud_var, width=12)
+        
+        # Display for fetched value
+        self.cloud_entry = tk.Label(form, text="Loading...", bg="#2a2a2a", fg="white", width=12, relief="sunken", padx=6, pady=3)
         self.cloud_entry.grid(row=1, column=1, sticky="w", padx=6, pady=6)
+        
+        # Manual input field as failsafe
+        self.cloud_input = tk.Entry(form, textvariable=self.cloud_var, width=12)
+        self.cloud_input.grid(row=1, column=2, sticky="w", padx=6, pady=6)
+        
+        tk.Button(form, text="Fetch", command=self.fetch_cloud_cover).grid(row=1, column=3, sticky="w", padx=6, pady=6)
 
         self.coef_label = tk.Label(form, text="Model: a=?, b=?", bg="#1e1e1e", fg="white")
         self.coef_label.grid(row=2, column=0, columnspan=2, pady=6)
@@ -66,6 +78,8 @@ class AIBoard(BasePage):
         self.a = 0.0
         self.b = 0.0
 
+        # initial fetch of cloud cover (non-blocking)
+        self.fetch_cloud_cover()
         # initial fit (non-blocking)
         self.fit_model()
 
@@ -145,6 +159,41 @@ class AIBoard(BasePage):
                 self.after(0, lambda: self.safe_insert(f'Fit error: {e}\n'))
 
         threading.Thread(target=worker, daemon=True).start()
+
+    def fetch_cloud_cover(self):
+        """Fetch current cloud cover from Open-Meteo API"""
+        def worker():
+            try:
+                self.after(0, lambda: self.cloud_entry.config(text="Fetching..."))
+                cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
+                retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
+                openmeteo = openmeteo_requests.Client(session=retry_session)
+                
+                params = {
+                    "latitude": 52.0386111,
+                    "longitude": 5.066666666666666,
+                    "hourly": "cloud_cover",
+                    "forecast_days": 1,
+                }
+                responses = openmeteo.weather_api("https://api.open-meteo.com/v1/forecast", params=params)
+                
+                response = responses[0]
+                hourly = response.Hourly()
+                hourly_cloud_cover = hourly.Variables(0).ValuesAsNumpy()
+                
+                # Calculate average cloud cover for today (first 24 hours)
+                avg_cloud_cover = float(sum(hourly_cloud_cover[:24]) / 24)
+                self.cloud_var.set(avg_cloud_cover)
+                
+                self.after(0, lambda: self.cloud_entry.config(text=f"{avg_cloud_cover:.1f}%"))
+                self.after(0, lambda: self.safe_insert(f'Fetched cloud cover: {avg_cloud_cover:.1f}%\n'))
+            except Exception as e:
+                error_msg = str(e)
+                self.after(0, lambda: self.cloud_entry.config(text="Error fetching"))
+                self.after(0, lambda: self.safe_insert(f'Error fetching cloud cover: {error_msg}\n'))
+        
+        threading.Thread(target=worker, daemon=True).start()
+
     def predict(self):
         try:
             x = float(self.cloud_var.get())

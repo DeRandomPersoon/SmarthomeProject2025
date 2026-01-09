@@ -1,5 +1,5 @@
 {
   "pico_ip": "192.168.2.98",
   "baud": 115200,
-  "serial_port": ""
+  "serial_port": "COM3"
 }
