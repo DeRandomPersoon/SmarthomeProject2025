@@ -1,4 +1,4 @@
-"""WiFi HTTP server for Pico W: control LED, buzzer, and handle button presses.
+"""WiFi HTTP server for Pico W: control LED (Pin 15) and buzzer (Pin 11).
 
 Upload as main.py to your Pico W.
 """
@@ -15,12 +15,7 @@ PASSWORD = "45EEFEFE9547"
 
 # ===== GPIO Setup =====
 LED = Pin(15, Pin.OUT)
-BUZZER = Pin(6, Pin.OUT)
-BUTTON_GREEN = Pin(14, Pin.IN, Pin.PULL_DOWN)
-
-# Button state tracking
-button_pressed = False
-last_button_time = 0
+BUZZER = Pin(11, Pin.OUT)
 
 
 def connect_wifi():
@@ -42,7 +37,6 @@ def connect_wifi():
 
 def handle_request(request_line):
     """Parse HTTP request and return response."""
-    global button_pressed
     try:
         parts = request_line.split()
         if len(parts) < 2:
@@ -92,44 +86,12 @@ def handle_request(request_line):
             print("Buzzer pulse completed")
             return "200 OK", json.dumps({"buzzer": "PULSED"})
         
-        # Button check endpoint
-        elif path == "/button/check":
-            pressed = button_pressed
-            if pressed:
-                button_pressed = False
-                print("Button press detected and cleared")
-            return "200 OK", json.dumps({"pressed": pressed})
-        
         else:
             return "404 Not Found", ""
     
     except Exception as e:
         print(f"Error handling request: {e}")
         return "500 Internal Server Error", str(e)
-
-
-def button_handler(pin):
-    """Handle button interrupts."""
-    global button_pressed, last_button_time
-    current_time = utime.ticks_ms()
-    
-    # Debounce
-    if utime.ticks_diff(current_time, last_button_time) < 200:
-        return
-    
-    if pin == BUTTON_GREEN and BUTTON_GREEN.value():
-        button_pressed = True
-        last_button_time = current_time
-        print("=" * 50)
-        print("GREEN BUTTON PRESSED")
-        print("Button flag set - waiting for PC to poll")
-        print("=" * 50)
-
-
-def setup_buttons():
-    """Set up button interrupt handlers."""
-    BUTTON_GREEN.irq(trigger=Pin.IRQ_RISING, handler=button_handler)
-    print("Button interrupt configured")
 
 
 def run_server(wlan, port=80):
@@ -140,9 +102,6 @@ def run_server(wlan, port=80):
     sock.bind(addr)
     sock.listen(5)
     print(f"Server listening on {wlan.ifconfig()[0]}:{port}")
-    
-    # Setup button interrupts
-    setup_buttons()
     
     while True:
         try:

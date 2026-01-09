@@ -780,9 +780,6 @@ class ControlBoard(BasePage):
                         slot['last_triggered'] = now.date().isoformat()
                         self._save_schedules()
 
-            # Check physical button presses from Pico
-            self._check_physical_button()
-
             # sleep - check every 20 seconds
             for _ in range(4):
                 if getattr(self, '_scheduler_stop', False):
@@ -868,16 +865,6 @@ class ControlBoard(BasePage):
                 self.log(f"Scheduled alarm error: {e}")
         else:
             self.log(f"Scheduled alarm skipped - Pico not connected ({reason})")
-    def _check_physical_button(self):
-        """Check if physical button on Pico was pressed and trigger alarm."""
-        if self.micro and getattr(self.micro, 'is_connected', False):
-            try:
-                resp = self.micro.send_command("BUTTON CHECK")
-                if resp is True or resp == True or resp == "True" or str(resp).lower() == "true":
-                    self.log("Physical button pressed - triggering alarm")
-                    self.trigger_alarm()
-            except Exception:
-                pass  # Silently ignore errors to avoid log spam
     def close_curtain(self, idx, reason=''):
         self.curtain_states[idx] = False
         self._update_curtain_visual(idx)
