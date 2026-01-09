@@ -64,15 +64,15 @@ class WiFiController:
                 resp = requests.get(f"{self.base_url}/buzzer/off", timeout=t)
             elif cmd == "BUZZER PULSE":
                 resp = requests.get(f"{self.base_url}/buzzer/pulse", timeout=t)
-            elif cmd == "BUTTON CHECK":
-                resp = requests.get(f"{self.base_url}/button/check", timeout=t)
+            elif cmd == "PIR CHECK":
+                resp = requests.get(f"{self.base_url}/pir/check", timeout=t)
             else:
                 return ""
             
             if resp.status_code == 200:
                 data = resp.json()
-                # Try to return state, buzzer, pressed, or temp value
-                return data.get("state", data.get("buzzer", data.get("pressed", data.get("temp", ""))))
+                # Try to return state, buzzer, motion, pressed, or temp value
+                return data.get("state", data.get("buzzer", data.get("motion", data.get("pressed", data.get("temp", "")))))
             return ""
         except Exception as e:
             print(f"WiFi command failed: {e}")

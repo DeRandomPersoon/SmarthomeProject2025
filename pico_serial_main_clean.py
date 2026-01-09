@@ -16,6 +16,12 @@ PASSWORD = "45EEFEFE9547"
 # ===== GPIO Setup =====
 LED = Pin(15, Pin.OUT)
 BUZZER = Pin(11, Pin.OUT)
+PIR = Pin(2, Pin.IN, Pin.PULL_DOWN)
+
+# Motion detection state
+motion_triggered_light = False
+last_motion_time = 0
+motion_timeout = 180
 
 
 def connect_wifi():
@@ -49,21 +55,25 @@ def handle_request(request_line):
         
         # LED endpoints
         if path == "/toggle":
+            global motion_triggered_light
             if LED.value():
                 LED.value(0)
                 state = "OFF"
             else:
                 LED.value(1)
                 state = "ON"
-            print(f"LED toggled to {state}")
+            motion_triggered_light = False
+            print(f"LED toggled to {state} (manual)")
             return "200 OK", json.dumps({"state": state})
         elif path == "/on":
+            motion_triggered_light = False
             LED.value(1)
-            print("LED turned ON")
+            print("LED turned ON (manual)")
             return "200 OK", json.dumps({"state": "ON"})
         elif path == "/off":
+            motion_triggered_light = False
             LED.value(0)
-            print("LED turned OFF")
+            print("LED turned OFF (manual)")
             return "200 OK", json.dumps({"state": "OFF"})
         elif path == "/state":
             state = "ON" if LED.value() else "OFF"
@@ -101,6 +111,7 @@ def run_server(wlan, port=80):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     sock.bind(addr)
     sock.listen(5)
+    sock.settimeout(1.0)
     print(f"Server listening on {wlan.ifconfig()[0]}:{port}")
     
     while True:
@@ -114,12 +125,45 @@ def run_server(wlan, port=80):
                 response = f"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{body}"
                 conn.sendall(response.encode())
             conn.close()
+        except OSError:
+            pass
         except Exception as e:
             print(f"Server error: {e}")
             try:
                 conn.close()
             except:
                 pass
+        
+        check_motion_timeout()
+
+
+def pir_handler(pin):
+    """Handle PIR motion detection."""
+    global motion_triggered_light, last_motion_time
+    if PIR.value():
+        last_motion_time = utime.time()
+        if not LED.value():
+            LED.value(1)
+            motion_triggered_light = True
+            print("Motion detected - LED turned ON")
+        elif motion_triggered_light:
+            print("Motion detected - timer reset")
+
+
+def check_motion_timeout():
+    """Check if motion-triggered LED should auto-off."""
+    global motion_triggered_light, last_motion_time
+    if motion_triggered_light and LED.value():
+        elapsed = utime.time() - last_motion_time
+        if elapsed >= motion_timeout:
+            LED.value(0)
+            motion_triggered_light = False
+            print("LED auto-off (no motion)")
+
+def setup_pir():
+    """Set up PIR sensor interrupt."""
+    PIR.irq(trigger=Pin.IRQ_RISING, handler=pir_handler)
+    print("PIR sensor configured on Pin 2")
 
 
 if __name__ == "__main__":
@@ -128,6 +172,7 @@ if __name__ == "__main__":
     print("=" * 50)
     wlan = connect_wifi()
     if wlan:
+        setup_pir()
         run_server(wlan)
     else:
         print("Failed to connect to WiFi; server not running")

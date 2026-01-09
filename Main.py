@@ -3,11 +3,6 @@
 # Avoid placing control or hardware logic here so the entry point stays lightweight and predictable.
 
 # Main.py
-"""
-Main entry point for the TinyHouse Smart Home System.
-This file should only start the application and connect modules together.
-"""
-
 from DashBoard import App
 import argparse
 import sys
@@ -20,7 +15,7 @@ def try_import_micro():
 		print("Micro imported successfully (auto-start blink may be running).")
 		return True
 	except Exception as e:
-		print("Micro import failed (blink disabled):", e)
+		print("Micro import failed", e)
 		return False
 
 

@@ -122,6 +122,11 @@ class ControlBoard(BasePage):
         # Note: schedule editors are shown in popup windows (per device)
         self.curtain_duration_var = tk.IntVar(value=5)  # keep a default for quick edits
 
+        # Motion-activated light tracking
+        self.light_turn_on_reason = [None] * 3  # Track why each light is on: 'manual', 'schedule', 'motion'
+        self.motion_auto_off_timer = [None] * 3  # Timer references for motion-triggered auto-off
+        self.motion_timeout = 180  # Auto-off after 3 minutes of no motion
+
         # Log area
         self.log_text = tk.Text(self.content, height=6, bg="#2a2a2a", fg="white")
         self.log_text.pack(fill="x", padx=8, pady=6)
@@ -706,7 +711,10 @@ class ControlBoard(BasePage):
                         slot['last_triggered'] = now.date().isoformat()
                         self._save_schedules()
 
-            # sleep - check every 20 seconds
+            # Sync LED state from Pico (in case motion turned it on)
+            self._sync_light_state()
+
+            # sleep - check schedules every 20 seconds
             for _ in range(4):
                 if getattr(self, '_scheduler_stop', False):
                     break
@@ -722,13 +730,13 @@ class ControlBoard(BasePage):
 
     # -------------------- actions --------------------
     def set_light_state(self, idx, on, reason=''):
-        self.light_states[idx] = bool(on)
-        self._update_light_visual(idx)
+        """Set light state (used by scheduler)."""
+        if on and not self.light_states[idx]:
+            self._turn_light_on(idx, reason=reason)
+        elif not on and self.light_states[idx]:
+            self._turn_light_off(idx, reason=reason)
         name = "Light" if idx == 0 else ("Curtain" if idx == 1 else "Heating")
         self.log(f'{name} {idx+1} -> {"ON" if on else "OFF"} ({reason})')
-        # placeholder for microcontroller integration later
-        # if self.micro and self.micro.is_connected:
-        #     self.micro.toggle_led(idx + 1)
 
     def open_curtain(self, idx, duration=5, reason=''):
         # open (momentary) and schedule close after duration
@@ -746,8 +754,11 @@ class ControlBoard(BasePage):
     def _device_button_pressed(self, idx):
         """Handle device button presses: toggle light/heating or momentary open curtains."""
         if idx == 0:
-            # toggle light
-            self.toggle_light(0)
+            # toggle light - mark as manual
+            if self.light_states[0]:
+                self._turn_light_off(0, reason='manual')
+            else:
+                self._turn_light_on(0, reason='manual')
         elif idx == 1:
             # curtains -> momentary open (use default duration)
             dur = int(self.curtain_duration_var.get()) if getattr(self, 'curtain_duration_var', None) else 5
@@ -795,6 +806,95 @@ class ControlBoard(BasePage):
         self.curtain_states[idx] = False
         self._update_curtain_visual(idx)
         self.log(f'Curtain {idx+1} closed ({reason})')
+
+    def _check_pir_motion(self):
+        """Deprecated - motion now handled on Pico side."""
+        pass
+
+    def _sync_light_state(self):
+        """Sync light state from Pico to keep UI in sync."""
+        if not self.micro or not getattr(self.micro, 'is_connected', False):
+            return
+        try:
+            resp = self.micro.send_command("STATE 1")
+            if resp:
+                new_state = (str(resp).upper() == "ON")
+                if new_state != self.light_states[0]:
+                    self.light_states[0] = new_state
+                    self._update_light_visual(0)
+        except Exception:
+            pass
+        except Exception:
+            pass
+
+    def _turn_light_on(self, idx, reason='manual'):
+        """Turn light on and track the reason."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            def worker():
+                try:
+                    resp = self.micro.send_command("TOGGLE 1" if not self.light_states[idx] else "STATE 1")
+                    if not self.light_states[idx]:
+                        self.micro.send_command("TOGGLE 1")
+                    self.light_states[idx] = True
+                    self.light_turn_on_reason[idx] = reason
+                    self._update_light_visual(idx)
+                    if reason == 'motion':
+                        self._start_motion_timer(idx)
+                    else:
+                        self._cancel_motion_timer(idx)
+                except Exception:
+                    pass
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            self.light_states[idx] = True
+            self.light_turn_on_reason[idx] = reason
+            self._update_light_visual(idx)
+            if reason == 'motion':
+                self._start_motion_timer(idx)
+
+    def _turn_light_off(self, idx, reason='manual'):
+        """Turn light off."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            def worker():
+                try:
+                    if self.light_states[idx]:
+                        self.micro.send_command("TOGGLE 1")
+                    self.light_states[idx] = False
+                    self.light_turn_on_reason[idx] = None
+                    self._update_light_visual(idx)
+                    self._cancel_motion_timer(idx)
+                except Exception:
+                    pass
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            self.light_states[idx] = False
+            self.light_turn_on_reason[idx] = None
+            self._update_light_visual(idx)
+            self._cancel_motion_timer(idx)
+
+    def _start_motion_timer(self, idx):
+        """Start auto-off timer for motion-triggered light."""
+        self._cancel_motion_timer(idx)
+        def auto_off():
+            time.sleep(self.motion_timeout)
+            if self.light_turn_on_reason[idx] == 'motion':
+                self._turn_light_off(idx, reason='motion timeout')
+                self.log(f"Light {idx+1} auto-off (no motion)")
+        self.motion_auto_off_timer[idx] = threading.Thread(target=auto_off, daemon=True)
+        self.motion_auto_off_timer[idx].start()
+
+    def _reset_motion_timer(self, idx):
+        """Reset the motion timer when new motion detected."""
+        if self.light_turn_on_reason[idx] == 'motion':
+            self._start_motion_timer(idx)
+
+    def _cancel_motion_timer(self, idx):
+        """Cancel motion auto-off timer."""
+        if self.motion_auto_off_timer[idx]:
+            try:
+                self.motion_auto_off_timer[idx] = None
+            except Exception:
+                pass
 
     # -------------------- logging --------------------
     def log(self, msg):
