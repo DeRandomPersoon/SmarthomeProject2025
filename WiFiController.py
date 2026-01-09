@@ -1,4 +1,8 @@
-"""WiFi HTTP controller for Pico W."""
+"""
+Lightweight HTTP client for talking to the Pico W firmware endpoints.
+Wraps GET calls for toggling lights and buzzer while handling basic connection testing.
+Used as a drop-in replacement for the old serial-based MicroController.
+"""
 import requests
 import threading
 

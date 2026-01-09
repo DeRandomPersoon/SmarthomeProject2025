@@ -1,3 +1,9 @@
+"""
+Control panel page for manual controls, scheduling, and alarms.
+Handles light/curtain/heating toggles plus scheduled tasks, and talks to the Pico over WiFi.
+Serial support was removed; connection setup now lives on the Settings page.
+"""
+
 import tkinter as tk
 import threading
 import json
@@ -5,11 +11,6 @@ import os
 import datetime
 import time
 from BasePage import BasePage
-
-try:
-    from Micro import MicroController
-except Exception:
-    MicroController = None
 
 try:
     from WiFiController import WiFiController
@@ -93,24 +94,20 @@ class ControlBoard(BasePage):
         )
         self.alarm_button.grid(row=0, column=0, padx=(0,10))
         self.alarm_button._orig_bg = self.alarm_button.cget('bg')
-        tk.Label(alarm_row, text="Trigger buzzer alarm", bg="#1e1e1e", fg="white").grid(row=0, column=1, columnspan=2, padx=10)
-        tk.Button(alarm_row, text="Edit schedule", command=self.show_alarm_schedule_editor).grid(row=0, column=3, padx=6)
+        # Spacer columns to align with other device rows
+        tk.Label(alarm_row, text="", bg="#1e1e1e", width=6).grid(row=0, column=1, padx=4)
+        tk.Label(alarm_row, text="", bg="#1e1e1e", width=6).grid(row=0, column=2, padx=4)
+        tk.Label(alarm_row, text="Alarm buzzer", bg="#1e1e1e", fg="white").grid(row=0, column=3, columnspan=2, padx=10, sticky="w")
+        tk.Button(alarm_row, text="Edit schedule", command=self.show_alarm_schedule_editor).grid(row=0, column=6, padx=6)
 
         self.status = tk.Label(self.content, text="Pico: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
 
-        # WiFi connection controls
-        self.ip_var = tk.StringVar(value="192.168.2.98")
-        ip_row = tk.Frame(self.content, bg="#1e1e1e")
-        ip_row.pack(pady=(0,10))
-        tk.Label(ip_row, text="Pico IP:", bg="#1e1e1e", fg="white").pack(side="left", padx=(0,4))
-        ip_entry = tk.Entry(ip_row, textvariable=self.ip_var, width=15)
-        ip_entry.pack(side="left", padx=4)
-        tk.Button(ip_row, text="Connect", command=self._connect_wifi).pack(side="left", padx=6)
+        # WiFi connection state comes from Settings; we only auto-connect using the saved IP
+        self.ip_var = tk.StringVar(value="")
 
-        # microcontroller state
+        # microcontroller state (WiFi only)
         self.micro = None
-        self.selected_port = None
 
         # Scheduling state
         # lights: list of {'light': idx, 'on': 'HH:MM', 'off': 'HH:MM'}
@@ -149,62 +146,6 @@ class ControlBoard(BasePage):
             except Exception:
                 pass
 
-    def _connect_worker(self, port, baud):
-        try:
-            mc = MicroController()
-            ok = mc.connect(port, baud)  # pass baud through
-            if ok:
-                self.micro = mc
-                self.selected_port = port
-                self.status.config(text=f"Micro: connected ({port})")
-            else:
-                self.status.config(text="Micro: connect failed")
-        except Exception:
-            self.status.config(text="Micro: error")
-
-    def _refresh_ports(self):
-        if not MicroController:
-            self.status.config(text="pyserial not installed")
-            return
-        try:
-            ports = MicroController.list_ports() or []
-        except Exception:
-            ports = []
-        menu = self.port_menu['menu']
-        menu.delete(0, 'end')
-        for p in ports:
-            menu.add_command(label=p, command=lambda v=p: self.port_var.set(v))
-        if ports:
-            if not self.port_var.get():
-                self.port_var.set(ports[0])
-            self.status.config(text=f"Ports: {', '.join(ports)}")
-        else:
-            self.port_var.set("")
-            self.status.config(text="No ports found")
-
-    def _connect_selected(self):
-        if not MicroController:
-            self.status.config(text="pyserial not installed")
-            return
-        port = self.port_var.get().strip()
-        if not port:
-            self.status.config(text="Select a port first")
-            return
-        self.status.config(text=f"Connecting {port}...")
-        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
-
-    def _connect_wifi(self):
-        """Connect to Pico W over WiFi."""
-        if not WiFiController:
-            self.status.config(text="requests library not installed")
-            return
-        ip = self.ip_var.get().strip()
-        if not ip:
-            self.status.config(text="Enter Pico IP first")
-            return
-        self.status.config(text=f"Connecting {ip}...")
-        threading.Thread(target=self._connect_wifi_worker, args=(ip,), daemon=True).start()
-
     def _connect_wifi_worker(self, ip):
         """Connect to Pico W in background."""
         try:
@@ -228,21 +169,6 @@ class ControlBoard(BasePage):
                 self.status.config(text="Pico: connect failed")
         except Exception as e:
             self.status.config(text=f"Pico: error ({e})")
-
-    def _connect_auto(self):
-        """Auto-detect first available port and connect."""
-        if not MicroController:
-            self.status.config(text="pyserial not installed")
-            return
-        try:
-            port = MicroController.auto_detect()
-        except Exception:
-            port = None
-        if not port:
-            self.status.config(text="No port found")
-            return
-        self.status.config(text=f"Connecting {port}...")
-        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
 
     def toggle_light(self, idx):
         # If microcontroller present, send command; otherwise simulate local toggle

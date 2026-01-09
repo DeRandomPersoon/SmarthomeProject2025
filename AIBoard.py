@@ -1,3 +1,9 @@
+"""
+AI utilities page for fitting a simple model and predicting energy output.
+Loads datasets from local CSV files, fetches cloud cover data, and exposes quick buttons for training/prediction.
+Designed as a contained panel so experiments stay separate from the main dashboard.
+"""
+
 import tkinter as tk
 from tkinter import ttk
 import csv

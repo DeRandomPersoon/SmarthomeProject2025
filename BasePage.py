@@ -1,3 +1,9 @@
+"""
+Shared base frame that provides the nav bar and a content area used by every page.
+Keeps navigation drawing logic in one place so pages only worry about their own widgets.
+Extend this class when adding new screens to keep layout consistent.
+"""
+
 import tkinter as tk
 import math
 

@@ -1,4 +1,6 @@
-#Main python script for starting program, DO NOT PUT CODE INTO THIS PAGE FOR DASHBOARD OR M.CONTROLLER
+# Smart Home launcher for the TinyHouse dashboard.
+# Starts the Tkinter UI, parses command-line switches, and keeps all feature logic in the pages it loads.
+# Avoid placing control or hardware logic here so the entry point stays lightweight and predictable.
 
 # Main.py
 """

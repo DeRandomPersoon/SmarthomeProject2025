@@ -1,3 +1,9 @@
+"""
+Main dashboard shell that hosts the gauge view, AI tools, control panel, and settings page.
+Handles navigation between pages while keeping the bottom nav visuals consistent.
+All heavy lifting lives in the child pages; this file wires them together and handles top-level layout.
+"""
+
 import tkinter as tk
 import math
 import time
@@ -502,7 +508,6 @@ class MainPage(BasePage):
     # Nav drawing is handled by BasePage
 
     def on_nav(self, idx):
-        print("Nav pressed:", idx)
         self.set_active_nav(idx)
         self.show_page(idx)
 
