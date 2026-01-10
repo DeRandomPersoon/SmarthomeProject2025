@@ -15,6 +15,9 @@ Desktop dashboard for the TinyHouse smart home model plus the Pico W firmware it
 - [WiFiController.py](WiFiController.py): Little HTTP helper the app uses to talk to the Pico W endpoints.
 - [pico_serial_main.py](pico_serial_main.py): MicroPython HTTP server for the Pico W (LED/buzzer control); upload to the Pico via Thonny as main.py.
 - [pico_serial_main_clean.py](pico_serial_main_clean.py): Clean reference version of the Pico firmware with the same endpoints.
+- [Smarthome_AI.py](Smarthome_AI.py): Algorithm that is the backbone for [AIBoard.py](AIBoard.py).
+- [Smarthome_AI_demo.py](Smarthome_AI_demo.py): Version of [Smarthome_AI.py](Smarthome_AI.py) used for demo's and testing.
+- [algoritmes.py](algoritmes.py): Library with functions used for AI, used in [Smarthome_AI.py](Smarthome_AI.py).
 
 ## Notes
 - Settings (serial port, baud, Pico IP, schedules) are stored in settings.json in this folder.
