@@ -25,7 +25,6 @@ except Exception:
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.txt")
 
-# Database configuration
 DB_HOST = "4.233.209.202"
 DB_NAME = "TinyHomeTeam"
 DB_USER = "postgres"
@@ -391,7 +390,6 @@ class SettingsPage(BasePage):
             
             cursor = connection.cursor()
             
-            # Try multiple query strategies
             queries = [
                 """SELECT sensor_naam, meting_waarde, 
                          COALESCE(timestamp, NOW()) as time 

@@ -2,7 +2,6 @@
 import requests
 import threading
 
-
 class WiFiController:
     def __init__(self, host="pico.local", port=80, timeout=2.0):
         self.host = host
@@ -12,7 +11,6 @@ class WiFiController:
         self.base_url = f"http://{host}:{port}"
 
     def connect(self, host=None, port=None):
-        """Test connection to the Pico W HTTP server."""
         if host:
             self.host = host
         if port:
@@ -67,7 +65,6 @@ class WiFiController:
             return ""
 
     def send_command_async(self, cmd, callback=None):
-        """Send a command in a background thread."""
         def _worker():
             resp = ""
             try:
@@ -82,7 +79,6 @@ class WiFiController:
         threading.Thread(target=_worker, daemon=True).start()
 
     def toggle_led(self, idx):
-        """Send a toggle command (idx is ignored; always toggles device 1)."""
         try:
             resp = self.send_command("TOGGLE 1")
             return resp.upper() in ("ON", "OFF")

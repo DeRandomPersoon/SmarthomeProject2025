@@ -8,7 +8,7 @@ def binair_zoeken(lst, target):
             return index
         if lst[index] < target:
             mini = index + 1
-        else: #lst[index] > target:
+        else:
             maxi = index -1
     return -1
 
@@ -34,9 +34,7 @@ def modus_zoeken(lst):
     for counter in counters:
         if counter == max_counters:
             indexen.append(index)
-            index += 1
-        else:
-            index += 1
+        index += 1
     modussen = []
     for i in indexen:
         modussen.append(nummers[i])
@@ -89,13 +87,11 @@ def uitschieters_berekenen(lst):
         onder_mediaan = lst[:helft]
     Q3 = mediaan_berekenen(boven_mediaan)
     Q1 = mediaan_berekenen(onder_mediaan)
-    onder_grens =  Q1 - (1.5 * IQR)
+    onder_grens = Q1 - (1.5 * IQR)
     boven_grens = Q3 + (1.5 * IQR)
     uitschieters = []
     for getal in lst:
-        if getal < onder_grens:
-            uitschieters.append(getal)
-        if getal > boven_grens:
+        if getal < onder_grens or getal > boven_grens:
             uitschieters.append(getal)
     if len(uitschieters) == 0:
         return 'Er zijn geen uitschieters'
@@ -111,8 +107,8 @@ def selection_sort(lst):
         vergelijk = index + 1
         while vergelijk != len(lst):
             if min < lst[vergelijk]:
-                vergelijk =vergelijk + 1
-            else: # min > lst[vergelijk]
+                vergelijk = vergelijk + 1
+            else:
                 min = lst[vergelijk]
                 min_index = vergelijk
                 vergelijk = vergelijk + 1
@@ -141,33 +137,18 @@ def corrolatie_berekenen(lst_1, lst_2):
         correlatie = teller / noemer
         return correlatie
 def gradient_descent(x, y, num_iterations=10000, learning_rate=0.0001):
-    """
-    Traint de coefficienten a en b voor het lineaire regressiemodel ŷ = a + b * x met de gradient descent methode.
-
-    Args:
-        x (list): de onafhankelijke waarden van de observaties
-        y (list): de afhankelijke waarden van de observaties
-        num_iterations (int): aantal iteraties om te leren
-        learning_rate (float): leerconstante
-
-    Returns:
-        [float, float]: de berekende coefficienten
-    """
     n = len(x)
     iterations = 0
     a = 0
     b = 0
-    while True:
-        if iterations != num_iterations:
-            grad_a = 0
-            grad_b = 0
-            for i in range(n):
-                error = (a + b * x[i]) - y[i]
-                grad_a = grad_a + (2 * error)
-                grad_b = grad_b + (2 * error * x[i])
-            a = a - grad_a * learning_rate / n
-            b = b - grad_b * learning_rate / n
-            iterations = iterations + 1
-        else:
-            coefficients = [a, b]
-            return coefficients
+    while iterations != num_iterations:
+        grad_a = 0
+        grad_b = 0
+        for i in range(n):
+            error = (a + b * x[i]) - y[i]
+            grad_a = grad_a + (2 * error)
+            grad_b = grad_b + (2 * error * x[i])
+        a = a - grad_a * learning_rate / n
+        b = b - grad_b * learning_rate / n
+        iterations = iterations + 1
+    return [a, b]

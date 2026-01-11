@@ -103,27 +103,20 @@ class ControlBoard(BasePage):
         self.light_states = [False] * 3
         self.curtain_states = [False] * 3
         self.buzzer_states = [False]
+        self.curtain_duration_var = tk.IntVar(value=5)
 
-        # Note: schedule editors are shown in popup windows (per device)
-        self.curtain_duration_var = tk.IntVar(value=5)  # keep a default for quick edits
-
-        # Log area
         self.log_text = tk.Text(self.content, height=6, bg="#2a2a2a", fg="white")
         self.log_text.pack(fill="x", padx=8, pady=6)
 
-        # Load existing schedules if any
         self._load_schedules()
         self._refresh_schedule_views()
 
-        # Start scheduler thread
         self._scheduler_stop = False
         threading.Thread(target=self._schedule_worker, daemon=True).start()
 
-        # Start database uploader thread (pushes data.txt every 10 seconds)
         if psycopg2:
             threading.Thread(target=self._database_uploader, daemon=True).start()
 
-        # Try auto-connect using saved settings (if available)
         if WiFiController:
             try:
                 if os.path.exists(SETTINGS_FILE):
@@ -138,7 +131,7 @@ class ControlBoard(BasePage):
     def _connect_worker(self, port, baud):
         try:
             mc = MicroController()
-            ok = mc.connect(port, baud)  # pass baud through
+            ok = mc.connect(port, baud)
             if ok:
                 self.micro = mc
                 self.selected_port = port
@@ -324,7 +317,6 @@ class ControlBoard(BasePage):
             self.log(f"Save schedules failed: {e}")
 
     def _refresh_schedule_views(self):
-        # Previously there were inline listboxes; they may be removed in newer UI.
         if hasattr(self, 'light_listbox'):
             try:
                 self.light_listbox.delete(0, 'end')
@@ -409,9 +401,6 @@ class ControlBoard(BasePage):
             self._show_buzzer_schedule_popup()
 
     def _show_light_schedule_popup(self, idx):
-        def _device_label(i):
-            return "Light" if i == 0 else ("Curtain" if i == 1 else "Heating")
-
         popup = tk.Toplevel(self)
         popup.title(f"Light {idx+1} schedules")
         popup.geometry("420x300")
@@ -582,7 +571,6 @@ class ControlBoard(BasePage):
 
         refresh_list()
     def remove_light_timeslot(self):
-        # Inline listbox removed in newer UI; if present behave as before, otherwise advise to use editor popup
         if hasattr(self, 'light_listbox'):
             sel = self.light_listbox.curselection()
             if not sel:
@@ -928,28 +916,22 @@ class ControlBoard(BasePage):
             )
             
             connection.rollback()
-            
             cursor = connection.cursor()
             
-            # Try multiple query strategies to handle different table schemas
             queries = [
-                # Try with id and timestamp
                 """SELECT sensor_naam, meting_waarde, 
                          COALESCE(timestamp, NOW()) as time 
                    FROM sensor_metingen 
                    ORDER BY id DESC 
                    LIMIT %s""",
-                # Try with just id
                 """SELECT sensor_naam, meting_waarde 
                    FROM sensor_metingen 
                    ORDER BY id DESC 
                    LIMIT %s""",
-                # Try with timestamp only (no id column)
                 """SELECT sensor_naam, meting_waarde, timestamp 
                    FROM sensor_metingen 
                    ORDER BY timestamp DESC 
                    LIMIT %s""",
-                # Simplest fallback - just get last rows
                 """SELECT sensor_naam, meting_waarde 
                    FROM sensor_metingen 
                    LIMIT %s"""
@@ -962,10 +944,10 @@ class ControlBoard(BasePage):
                 try:
                     cursor.execute(sql, (limit,))
                     results = cursor.fetchall()
-                    break  # Success, exit loop
+                    break
                 except Exception as e:
                     last_error = e
-                    continue  # Try next query
+                    continue
             
             cursor.close()
             connection.close()

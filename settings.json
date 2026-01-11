@@ -3,13 +3,7 @@
   "baud": 115200,
   "serial_port": "COM3",
   "schedules": {
-    "lights": [
-      {
-        "light": 0,
-        "on": "07:00",
-        "off": "23:00"
-      }
-    ],
+    "lights": [],
     "curtains": [],
     "heating": [],
     "buzzer": []

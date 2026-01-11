@@ -16,7 +16,6 @@ except Exception:
     try:
         from AIFiles import algroritmes as al
     except Exception:
-        # attempt to load module directly from AIFiles/algroritmes.py
         try:
             import importlib.util
             path = os.path.join(os.path.dirname(__file__), 'AIFiles', 'algroritmes.py')
@@ -52,11 +51,9 @@ class AIBoard(BasePage):
         tk.Label(form, text="Cloud cover % (0-100):", bg="#1e1e1e", fg="white").grid(row=1, column=0, sticky="w")
         self.cloud_var = tk.DoubleVar(value=50.0)
         
-        # Display for fetched value
         self.cloud_entry = tk.Label(form, text="Loading...", bg="#2a2a2a", fg="white", width=12, relief="sunken", padx=6, pady=3)
         self.cloud_entry.grid(row=1, column=1, sticky="w", padx=6, pady=6)
         
-        # Manual input field as failsafe
         self.cloud_input = tk.Entry(form, textvariable=self.cloud_var, width=12)
         self.cloud_input.grid(row=1, column=2, sticky="w", padx=6, pady=6)
         
@@ -78,9 +75,7 @@ class AIBoard(BasePage):
         self.a = 0.0
         self.b = 0.0
 
-        # initial fetch of cloud cover (non-blocking)
         self.fetch_cloud_cover()
-        # initial fit (non-blocking)
         self.fit_model()
 
     def _available_datasets(self):

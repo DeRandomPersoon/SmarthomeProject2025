@@ -76,7 +76,6 @@ class MicroController:
 				return ""
 
 	def send_command_async(self, cmd, callback=None):
-		"""Send a command in a background thread. If callback provided, it's called with the response."""
 		def _worker():
 			resp = ""
 			try:

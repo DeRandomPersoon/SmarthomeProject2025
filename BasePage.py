@@ -11,11 +11,9 @@ class BasePage(tk.Frame):
         self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=0)
 
-        # Content container
         self.content = tk.Frame(self, bg="#1e1e1e")
         self.content.grid(row=0, column=0, sticky="nsew")
 
-        # Fixed nav bar at bottom
         self.nav_frame = tk.Frame(self, bg="#1e1e1e")
         self.nav_frame.grid(row=1, column=0, pady=10)
         self.nav_canvases = []

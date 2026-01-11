@@ -13,7 +13,6 @@ from SettingsPage import SettingsPage
 from AIBoard import AIBoard
 from BasePage import BasePage
 
-# Try to import matplotlib for nicer plots; fall back to canvas plotting if unavailable
 try:
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -40,28 +39,16 @@ class MainPage(BasePage):
         self.temp_value = -20
         self.max_temp = 32
 
-        # Layout inside content
-        # rows: 0=gauge, 1=controls, 2=weather (nav is provided by BasePage)
         self.content.rowconfigure(0, weight=4)
         self.content.rowconfigure(1, weight=1)
         self.content.rowconfigure(2, weight=2)
         self.content.columnconfigure(0, weight=1)
 
-        # =========================
-        # GAUGE CANVAS
-        # =========================
         self.canvas = tk.Canvas(self.content, bg="#1e1e1e", highlightthickness=0)
         self.canvas.grid(row=0, column=0, sticky="nsew", pady=20)
         self.canvas.bind("<Configure>", self.on_resize)
 
-
-
-        # =========================
-        # + / - BUTTONS
-        # =========================
         self.btn_frame = tk.Frame(self.content, bg="#1e1e1e")
-        # keep the button frame anchored to the top so buttons start at the same height
-        # give slightly more top padding so they align nicely with the gauge
         self.btn_frame.grid(row=1, column=0, sticky='n', pady=(18,0))
 
         tk.Button(self.btn_frame, text="+", width=4, font=("Arial", 18),
@@ -70,9 +57,6 @@ class MainPage(BasePage):
         tk.Button(self.btn_frame, text="-", width=4, font=("Arial", 18),
               command=self.decrease_temp).grid(row=0, column=1, padx=15)
 
-        # =========================
-        # WEATHER
-        # =========================
         self.weather_label = tk.Label(
             self.content, bg="#2a2a2a", fg="white",
             font=("Arial", 16), height=3
@@ -82,10 +66,8 @@ class MainPage(BasePage):
         self.weather_label.bind("<Button-1>", lambda e: self.open_weather_details())
         threading.Thread(target=self.load_weather, daemon=True).start()
 
-        # BasePage already created the nav bar at the bottom; set active tab
         self.set_active_nav(0)
 
-        # Placeholder for pages created on nav presses
         self.control_page = None
         self.settings_page = None
         self.ai_page = None
@@ -114,7 +96,6 @@ class MainPage(BasePage):
         r = size / 2
         arc_width = 26
 
-        # ---------- ARC
         steps = 140
         for i in range(steps):
             t = i / steps
@@ -130,12 +111,9 @@ class MainPage(BasePage):
                 outline=self.temp_color(t)
             )
 
-        # ---------- BALL ON ARC (NO NEEDLE)
         ratio = self.temp_value / self.max_temp
         angle = math.radians(180 - ratio * 180)
-
         arc_radius = r - arc_width / 2
-
         bx = cx + math.cos(angle) * arc_radius
         by = cy + math.sin(angle) * arc_radius
 
@@ -146,7 +124,6 @@ class MainPage(BasePage):
             outline=""
         )
 
-        # ---------- TEXT
         self.canvas.create_text(
             cx, cy - 45,
             text=str(self.temp_value * -1) + " C",
@@ -154,9 +131,6 @@ class MainPage(BasePage):
             font=("Arial", 32)
         )
 
-    # =========================================================
-    # COLOR GRADIENT (UNCHANGED)
-    # =========================================================
     def temp_color(self, t):
         if t < 0.2:
             r, g, b = 0, int(255 * (t / 0.2)), 255
@@ -170,18 +144,12 @@ class MainPage(BasePage):
             r, g, b = 255, int(127 - 127 * ((t - 0.8) / 0.2)), 0
         return f"#{r:02x}{g:02x}{b:02x}"
 
-    # =========================================================
-    # BUTTON LOGIC
-    # =========================================================
     def increase_temp(self):
         if self.temp_value > (self.max_temp * -1):
             self.temp_value -= 1
             self.draw_gauge()
         else:
             self.flash_gauge()
-
-    # =========================================================
-    # Removed battery widget and related background worker per user request
         
     def decrease_temp(self):
         if self.temp_value < 0:
@@ -214,17 +182,12 @@ class MainPage(BasePage):
                 self.weather_label.config(text="Weather unavailable")
             time.sleep(120)
 
-    # =========================================================
-    # WEATHER DETAILS POPUP
-    # =========================================================
     def open_weather_details(self):
-        # create popout window (slightly larger)
         w = tk.Toplevel(self)
         w.title("Weather details")
         w.geometry("900x650")
         w.configure(bg="#1e1e1e")
 
-        # Controls (presets only - mode is inferred from preset)
         ctrl = tk.Frame(w, bg="#1e1e1e")
         ctrl.pack(side="top", fill="x", padx=10, pady=6)
 
@@ -235,7 +198,6 @@ class MainPage(BasePage):
         preset_menu.pack(side="left")
 
         def update_presets(*args):
-            # unified presets - days and years mixed; preset value determines aggregation
             menu = preset_menu['menu']
             menu.delete(0, 'end')
             opts = [("2 weeks", "14 days"), ("1 month", "30 days"), ("3 months", "90 days"), ("6 months", "180 days"), ("1 year", "1 years"), ("5 years", "5 years")]
@@ -251,7 +213,6 @@ class MainPage(BasePage):
         download_btn = tk.Button(ctrl, text="Download CSV", command=lambda: self.download_current_csv())
         download_btn.pack(side="right")
 
-        # container for plot
         plot_frame = tk.Frame(w, bg="#1e1e1e")
         plot_frame.pack(fill="both", expand=True, padx=10, pady=6)
 
@@ -266,7 +227,6 @@ class MainPage(BasePage):
             canvas_widget = tk.Canvas(plot_frame, bg="#2a2a2a")
             canvas_widget.pack(fill="both", expand=True)
 
-        # keep state for download & redraw
         self._weather_detail_state = {
             "preset_var": preset_var,
             "canvas": canvas_widget,
@@ -276,21 +236,17 @@ class MainPage(BasePage):
         }
 
         def load_and_plot():
-            # infer mode and range from preset value
             pv = preset_var.get() or "30 days"
             if pv.endswith('days'):
                 try:
                     days = int(pv.split()[0]) if ' ' in pv else int(pv.replace('days','').strip())
                 except Exception:
-                    # fallback: extract first number
                     import re
                     m = re.search(r"(\d+)", pv)
                     days = int(m.group(1)) if m else 30
                 mode = 'daily'
-                # limit check
                 if days > 3650:
                     messagebox.showinfo("Range out of scope","Selected range is too large. Please choose a shorter range (up to 10 years).")
-                    # clear current plot
                     self._weather_detail_state['current_data'] = ([], [], [])
                     self._weather_detail_state['mode'] = mode
                     self.render_plot(canvas_widget, [], [], [], self._weather_detail_state)
@@ -299,13 +255,11 @@ class MainPage(BasePage):
                 start = end - datetime.timedelta(days=max(1, days)-1)
                 dates, tmin, tmax = self.fetch_weather_range(start, end)
             else:
-                # assume years
                 try:
                     years = int(pv.split()[0]) if ' ' in pv else int(pv.replace('years','').strip())
                 except Exception:
                     years = 1
                 mode = 'monthly'
-                # limit check
                 if years > 50:
                     messagebox.showinfo("Range out of scope","Selected range is too large. Please choose a shorter range (up to 50 years).")
                     self._weather_detail_state['current_data'] = ([], [], [])
@@ -317,7 +271,6 @@ class MainPage(BasePage):
                 dates, tmin, tmax = self.fetch_weather_range(start, end)
                 dates, tmin, tmax = self.aggregate_monthly(dates, tmin, tmax)
 
-            # if no data returned, inform the user and clear plot
             if not dates:
                 messagebox.showinfo("No data","No data available for the selected range. Try a shorter range or check your network.")
                 self._weather_detail_state['current_data'] = ([], [], [])
@@ -325,16 +278,13 @@ class MainPage(BasePage):
                 self.render_plot(canvas_widget, [], [], [], self._weather_detail_state)
                 return
 
-            # store current dataset and mode
             self._weather_detail_state['current_data'] = (dates, tmin, tmax)
             self._weather_detail_state['mode'] = mode
-
             self.render_plot(canvas_widget, dates, tmin, tmax, self._weather_detail_state)
 
             if MATPLOTLIB_AVAILABLE and fig is not None:
                 fig.canvas.draw()
 
-        # initial load
         load_and_plot()
 
     def fetch_weather_range(self, start_date, end_date):
@@ -362,7 +312,6 @@ class MainPage(BasePage):
                 monthly[key] = {"tmin": [], "tmax": []}
             monthly[key]["tmin"].append(mn)
             monthly[key]["tmax"].append(mx)
-        # sort by year/month and construct aligned lists
         sorted_items = sorted(monthly.items())
         out_dates = [datetime.date(y, m, 1) for (y, m), _ in sorted_items]
         out_tmin = [sum(v["tmin"]) / len(v["tmin"]) for _, v in sorted_items]
@@ -381,12 +330,11 @@ class MainPage(BasePage):
                 canvas.create_text(200,100,text="No data", fill="white")
             return
 
-        mode = state.get('mode', 'daily')  # set by load_and_plot
+        mode = state.get('mode', 'daily')
 
         if MATPLOTLIB_AVAILABLE and state.get('fig'):
             ax = state['ax']
             ax.clear()
-            # convert dates for matplotlib if necessary and add axis ticks/labels
             try:
                 import matplotlib.dates as mdates
                 import matplotlib.ticker as mticker
@@ -395,33 +343,23 @@ class MainPage(BasePage):
                 ax.plot_date(x, tmax, '-', label="Max")
                 ax.fill_between(x, tmin, tmax, alpha=0.2)
 
-                # Y axis ticks and limits (ensure 0°C visible)
-                miny = min(tmin)
-                maxy = max(tmax)
-                miny = min(miny, 0)
-                maxy = max(maxy, 0)
+                miny = min(min(tmin), 0)
+                maxy = max(max(tmax), 0)
                 yrange = maxy - miny if maxy != miny else 1
                 ax.set_ylim(miny - 0.05*yrange, maxy + 0.05*yrange)
                 ax.yaxis.set_major_locator(mticker.MaxNLocator(nbins=6))
-
-                # draw 0°C line
                 ax.axhline(0, color='#00ffff', linestyle='--', linewidth=1, alpha=0.9)
-
-                # X axis: prefer sparse labeling (max ~6 labels)
                 ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=6))
                 ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(ax.xaxis.get_major_locator()))
 
-                # If monthly mode, prefer monthly formatting (keeps ticks readable)
                 if mode == 'monthly':
                     ax.xaxis.set_major_locator(mdates.MonthLocator(interval=1))
                     ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
             except Exception:
-                # fallback to plotting raw dates (matplotlib can often handle datetime.date directly)
                 ax.plot(dates, tmin, label="Min")
                 ax.plot(dates, tmax, label="Max")
                 ax.fill_between(dates, tmin, tmax, alpha=0.2)
                 try:
-                    # draw zero line if in range
                     miny = min(tmin)
                     maxy = max(tmax)
                     if miny <= 0 <= maxy:
@@ -433,7 +371,6 @@ class MainPage(BasePage):
             ax.set_ylabel("°C")
             state['fig'].autofmt_xdate()
         else:
-            # fallback canvas drawing
             canvas.delete("all")
             w = canvas.winfo_width() or 600
             h = canvas.winfo_height() or 300
@@ -500,15 +437,11 @@ class MainPage(BasePage):
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
-    # =========================================================
-    # Nav drawing is handled by BasePage
-
     def on_nav(self, idx):
         self.set_active_nav(idx)
         self.show_page(idx)
 
     def show_page(self, idx):
-        # AI page (index 1)
         if idx == 1:
             try:
                 self.canvas.grid_remove()
@@ -526,13 +459,10 @@ class MainPage(BasePage):
 
             if not self.ai_page:
                 self.ai_page = AIBoard(self.content)
-                # this page has its own content; its nav is hidden in its __init__
                 self.ai_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
             return
 
-        # If third nav (index 2) selected, replace main content with ControlBoard
         if idx == 2:
-            # hide main widgets
             try:
                 self.canvas.grid_remove()
                 self.btn_frame.grid_remove()
@@ -549,7 +479,6 @@ class MainPage(BasePage):
                 self.control_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
 
         elif idx == 3:
-            # Settings page
             try:
                 self.canvas.grid_remove()
                 self.btn_frame.grid_remove()
@@ -566,7 +495,6 @@ class MainPage(BasePage):
                 self.settings_page.grid(row=0, column=0, rowspan=3, sticky="nsew", padx=40, pady=20)
 
         else:
-            # restore main widgets if they were hidden
             if self.control_page:
                 self.control_page.destroy()
                 self.control_page = None
@@ -577,7 +505,6 @@ class MainPage(BasePage):
                 self.ai_page.destroy()
                 self.ai_page = None
 
-            # re-grid original widgets
             self.canvas.grid(row=0, column=0, sticky="nsew", pady=20)
             self.btn_frame.grid(row=1, column=0)
             self.weather_label.grid(row=2, column=0, sticky="nsew", padx=40, pady=10)

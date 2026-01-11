@@ -2,7 +2,6 @@ from DashBoard import App
 import argparse
 import sys
 
-
 def try_import_micro():
 	try:
 		import Micro
@@ -11,7 +10,6 @@ def try_import_micro():
 	except Exception as e:
 		print(f"Micro import failed: {e}")
 		return False
-
 
 def main(argv=None):
 	parser = argparse.ArgumentParser(description='TinyHouse Smart Home')
@@ -25,7 +23,6 @@ def main(argv=None):
 
 	app = App()
 	app.mainloop()
-
 
 if __name__ == "__main__":
 	main(sys.argv[1:])
