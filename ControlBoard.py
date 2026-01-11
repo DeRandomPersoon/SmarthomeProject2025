@@ -1,9 +1,3 @@
-"""
-Control panel page for manual controls, scheduling, and alarms.
-Handles light/curtain/heating toggles plus scheduled tasks, and talks to the Pico over WiFi.
-Serial support was removed; connection setup now lives on the Settings page.
-"""
-
 import tkinter as tk
 import threading
 import json
@@ -13,11 +7,29 @@ import time
 from BasePage import BasePage
 
 try:
+    import psycopg2
+except Exception:
+    psycopg2 = None
+
+try:
+    from Micro import MicroController
+except Exception:
+    MicroController = None
+
+try:
     from WiFiController import WiFiController
 except Exception:
     WiFiController = None
 
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
+DATA_FILE = os.path.join(os.path.dirname(__file__), "data.txt")
+
+# Database configuration
+DB_HOST = "4.233.209.202"
+DB_NAME = "TinyHomeTeam"
+DB_USER = "postgres"
+DB_PASSWORD = "730879"
+DB_PORT = "5432"
 
 class ControlBoard(BasePage):
     def __init__(self, parent):
@@ -26,10 +38,12 @@ class ControlBoard(BasePage):
         # Hide this page's nav; MainPage provides the visible one
         self.hide_nav()
 
-        # Top bar with Open Settings button
+        # Top bar with View Database button
         top = tk.Frame(self.content, bg="#1e1e1e")
         top.pack(fill="x", padx=10, pady=(10, 0))
-        # Settings access removed from ControlBoard (use nav bar settings icon)
+        if psycopg2:
+            tk.Button(top, text="View Database", command=self.show_database_window, bg="#444444", fg="white").pack(side="right", padx=5)
+            tk.Button(top, text="Add Test Data", command=self.add_test_data, bg="#444444", fg="white").pack(side="right", padx=5)
 
         # Controls area with buttons and per-light times next to each button
         self.btn_frame = tk.Frame(self.content, bg="#1e1e1e")
@@ -79,53 +93,33 @@ class ControlBoard(BasePage):
             tk.Button(row, text="Clear slot", command=lambda n=i: self.clear_light_slot(n)).grid(row=0, column=5, padx=6)
             tk.Button(row, text="Edit schedule", command=lambda n=i: self.show_schedule_editor(n)).grid(row=0, column=6, padx=6)
 
-        # Alarm button
-        alarm_row = tk.Frame(self.btn_frame, bg="#1e1e1e")
-        alarm_row.pack(pady=8, anchor='center')
-        self.alarm_button = tk.Button(
-            alarm_row,
-            text="Alarm",
-            width=14,
-            height=2,
-            font=("Arial", 16),
-            bg="#8B0000",
-            fg="white",
-            command=self.trigger_alarm,
-        )
-        self.alarm_button.grid(row=0, column=0, padx=(0,10))
-        self.alarm_button._orig_bg = self.alarm_button.cget('bg')
-        # Spacer columns to align with other device rows
-        tk.Label(alarm_row, text="", bg="#1e1e1e", width=6).grid(row=0, column=1, padx=4)
-        tk.Label(alarm_row, text="", bg="#1e1e1e", width=6).grid(row=0, column=2, padx=4)
-        tk.Label(alarm_row, text="Alarm buzzer", bg="#1e1e1e", fg="white").grid(row=0, column=3, columnspan=2, padx=10, sticky="w")
-        tk.Button(alarm_row, text="Edit schedule", command=self.show_alarm_schedule_editor).grid(row=0, column=6, padx=6)
-
         self.status = tk.Label(self.content, text="Pico: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
 
-        # WiFi connection state comes from Settings; we only auto-connect using the saved IP
-        self.ip_var = tk.StringVar(value="")
+        # WiFi connection controls
+        self.ip_var = tk.StringVar(value="192.168.2.98")
+        ip_row = tk.Frame(self.content, bg="#1e1e1e")
+        ip_row.pack(pady=(0,10))
+        tk.Label(ip_row, text="Pico IP:", bg="#1e1e1e", fg="white").pack(side="left", padx=(0,4))
+        ip_entry = tk.Entry(ip_row, textvariable=self.ip_var, width=15)
+        ip_entry.pack(side="left", padx=4)
+        tk.Button(ip_row, text="Connect", command=self._connect_wifi).pack(side="left", padx=6)
 
-        # microcontroller state (WiFi only)
+        # microcontroller state
         self.micro = None
+        self.selected_port = None
 
         # Scheduling state
         # lights: list of {'light': idx, 'on': 'HH:MM', 'off': 'HH:MM'}
         # curtains: list of {'open': 'HH:MM', 'close': 'HH:MM', 'duration': seconds, 'last_open': None, 'last_close': None}
         # heating: list of {'on': 'HH:MM', 'off': 'HH:MM'}
-        # alarms: list of {'time': 'HH:MM', 'last_triggered': None}
-        self.schedules = {"lights": [], "curtains": [], "heating": [], "alarms": []}
+        self.schedules = {"lights": [], "curtains": [], "heating": []}
         # three controllable devices now: light (idx 0), curtain (idx 1), heating (idx 2)
         self.light_states = [False] * 3
         self.curtain_states = [False] * 3
 
         # Note: schedule editors are shown in popup windows (per device)
         self.curtain_duration_var = tk.IntVar(value=5)  # keep a default for quick edits
-
-        # Motion-activated light tracking
-        self.light_turn_on_reason = [None] * 3  # Track why each light is on: 'manual', 'schedule', 'motion'
-        self.motion_auto_off_timer = [None] * 3  # Timer references for motion-triggered auto-off
-        self.motion_timeout = 180  # Auto-off after 3 minutes of no motion
 
         # Log area
         self.log_text = tk.Text(self.content, height=6, bg="#2a2a2a", fg="white")
@@ -139,6 +133,10 @@ class ControlBoard(BasePage):
         self._scheduler_stop = False
         threading.Thread(target=self._schedule_worker, daemon=True).start()
 
+        # Start database uploader thread (pushes data.txt every 10 seconds)
+        if psycopg2:
+            threading.Thread(target=self._database_uploader, daemon=True).start()
+
         # Try auto-connect using saved settings (if available)
         if WiFiController:
             try:
@@ -150,6 +148,62 @@ class ControlBoard(BasePage):
                         threading.Thread(target=self._connect_wifi_worker, args=(ip,), daemon=True).start()
             except Exception:
                 pass
+
+    def _connect_worker(self, port, baud):
+        try:
+            mc = MicroController()
+            ok = mc.connect(port, baud)  # pass baud through
+            if ok:
+                self.micro = mc
+                self.selected_port = port
+                self.status.config(text=f"Micro: connected ({port})")
+            else:
+                self.status.config(text="Micro: connect failed")
+        except Exception:
+            self.status.config(text="Micro: error")
+
+    def _refresh_ports(self):
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        try:
+            ports = MicroController.list_ports() or []
+        except Exception:
+            ports = []
+        menu = self.port_menu['menu']
+        menu.delete(0, 'end')
+        for p in ports:
+            menu.add_command(label=p, command=lambda v=p: self.port_var.set(v))
+        if ports:
+            if not self.port_var.get():
+                self.port_var.set(ports[0])
+            self.status.config(text=f"Ports: {', '.join(ports)}")
+        else:
+            self.port_var.set("")
+            self.status.config(text="No ports found")
+
+    def _connect_selected(self):
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        port = self.port_var.get().strip()
+        if not port:
+            self.status.config(text="Select a port first")
+            return
+        self.status.config(text=f"Connecting {port}...")
+        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
+
+    def _connect_wifi(self):
+        """Connect to Pico W over WiFi."""
+        if not WiFiController:
+            self.status.config(text="requests library not installed")
+            return
+        ip = self.ip_var.get().strip()
+        if not ip:
+            self.status.config(text="Enter Pico IP first")
+            return
+        self.status.config(text=f"Connecting {ip}...")
+        threading.Thread(target=self._connect_wifi_worker, args=(ip,), daemon=True).start()
 
     def _connect_wifi_worker(self, ip):
         """Connect to Pico W in background."""
@@ -175,6 +229,21 @@ class ControlBoard(BasePage):
         except Exception as e:
             self.status.config(text=f"Pico: error ({e})")
 
+    def _connect_auto(self):
+        """Auto-detect first available port and connect."""
+        if not MicroController:
+            self.status.config(text="pyserial not installed")
+            return
+        try:
+            port = MicroController.auto_detect()
+        except Exception:
+            port = None
+        if not port:
+            self.status.config(text="No port found")
+            return
+        self.status.config(text=f"Connecting {port}...")
+        threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
+
     def toggle_light(self, idx):
         # If microcontroller present, send command; otherwise simulate local toggle
         if self.micro and getattr(self.micro, 'is_connected', False):
@@ -185,6 +254,9 @@ class ControlBoard(BasePage):
                     # flip local state
                     self.light_states[idx] = not self.light_states[idx]
                     self._update_light_visual(idx)
+                    # Log to database
+                    device_name = "Light" if idx == 0 else ("Curtain" if idx == 1 else "Heating")
+                    self._log_to_database(f"{device_name}_{idx+1}", 1 if self.light_states[idx] else 0)
                 self.status.config(text=(f"Toggled {idx+1}" if ok else "Send failed"))
             threading.Thread(target=worker, daemon=True).start()
             return
@@ -219,8 +291,6 @@ class ControlBoard(BasePage):
                     sched = s.get('schedules') or {}
                     self.schedules['lights'] = sched.get('lights', [])
                     self.schedules['curtains'] = sched.get('curtains', [])
-                    self.schedules['heating'] = sched.get('heating', [])
-                    self.schedules['alarms'] = sched.get('alarms', [])
         except Exception:
             pass
         # reflect per-light slots in the on/off fields
@@ -596,57 +666,6 @@ class ControlBoard(BasePage):
         else:
             self.log('No inline curtain list available - use Edit schedule on the device to remove slots')
 
-    def show_alarm_schedule_editor(self):
-        """Open a popup window to edit alarm schedules."""
-        popup = tk.Toplevel(self)
-        popup.title("Alarm schedules")
-        popup.geometry("420x300")
-
-        lb = tk.Listbox(popup, width=48, height=8)
-        lb.pack(padx=8, pady=8)
-
-        tk.Label(popup, text="Set alarm times to trigger the buzzer automatically.", bg="#ffffff", fg="#000000").pack(padx=8, pady=(0,6))
-
-        def refresh_list():
-            lb.delete(0, 'end')
-            for i, s in enumerate(self.schedules.get('alarms', [])):
-                lb.insert('end', f"{i}: ALARM at {s['time']}")
-
-        time_var = tk.StringVar(value="07:00")
-
-        row = tk.Frame(popup)
-        row.pack(padx=8, pady=4)
-        tk.Label(row, text="Time (HH:MM):").grid(row=0, column=0)
-        tk.Entry(row, textvariable=time_var, width=8).grid(row=0, column=1, padx=6)
-
-        def add_slot():
-            try:
-                _ = datetime.datetime.strptime(time_var.get(), '%H:%M')
-            except Exception:
-                self.log('Invalid time format (use HH:MM)')
-                return
-            self.schedules['alarms'].append({'time': time_var.get(), 'last_triggered': None})
-            self._save_schedules()
-            refresh_list()
-            self.log(f'Added alarm at {time_var.get()}')
-
-        def remove_selected():
-            sel = lb.curselection()
-            if not sel:
-                return
-            try:
-                idx = sel[0]
-                alarm = self.schedules['alarms'].pop(idx)
-                self._save_schedules()
-                refresh_list()
-                self.log(f'Removed alarm at {alarm["time"]}')
-            except Exception:
-                pass
-
-        tk.Button(popup, text="Add alarm", command=add_slot).pack(padx=6, pady=6)
-        tk.Button(popup, text="Remove selected", command=remove_selected).pack(padx=6)
-        refresh_list()
-
     # -------------------- scheduler loop --------------------
     def _schedule_worker(self):
         while not getattr(self, '_scheduler_stop', False):
@@ -698,23 +717,7 @@ class ControlBoard(BasePage):
                         slot['last_close'] = now.date().isoformat()
                         self._save_schedules()
 
-            # alarms
-            for slot in self.schedules.get('alarms', []):
-                try:
-                    alarm_t = datetime.datetime.strptime(slot['time'], '%H:%M').time()
-                except Exception:
-                    continue
-                # trigger at exact minute (once per day)
-                if now_time.hour == alarm_t.hour and now_time.minute == alarm_t.minute:
-                    if slot.get('last_triggered') != now.date().isoformat():
-                        self._trigger_scheduled_alarm(reason='schedule')
-                        slot['last_triggered'] = now.date().isoformat()
-                        self._save_schedules()
-
-            # Sync LED state from Pico (in case motion turned it on)
-            self._sync_light_state()
-
-            # sleep - check schedules every 20 seconds
+            # sleep - check every 20 seconds
             for _ in range(4):
                 if getattr(self, '_scheduler_stop', False):
                     break
@@ -730,13 +733,13 @@ class ControlBoard(BasePage):
 
     # -------------------- actions --------------------
     def set_light_state(self, idx, on, reason=''):
-        """Set light state (used by scheduler)."""
-        if on and not self.light_states[idx]:
-            self._turn_light_on(idx, reason=reason)
-        elif not on and self.light_states[idx]:
-            self._turn_light_off(idx, reason=reason)
+        self.light_states[idx] = bool(on)
+        self._update_light_visual(idx)
         name = "Light" if idx == 0 else ("Curtain" if idx == 1 else "Heating")
         self.log(f'{name} {idx+1} -> {"ON" if on else "OFF"} ({reason})')
+        # placeholder for microcontroller integration later
+        # if self.micro and self.micro.is_connected:
+        #     self.micro.toggle_led(idx + 1)
 
     def open_curtain(self, idx, duration=5, reason=''):
         # open (momentary) and schedule close after duration
@@ -754,11 +757,8 @@ class ControlBoard(BasePage):
     def _device_button_pressed(self, idx):
         """Handle device button presses: toggle light/heating or momentary open curtains."""
         if idx == 0:
-            # toggle light - mark as manual
-            if self.light_states[0]:
-                self._turn_light_off(0, reason='manual')
-            else:
-                self._turn_light_on(0, reason='manual')
+            # toggle light
+            self.toggle_light(0)
         elif idx == 1:
             # curtains -> momentary open (use default duration)
             dur = int(self.curtain_duration_var.get()) if getattr(self, 'curtain_duration_var', None) else 5
@@ -768,133 +768,350 @@ class ControlBoard(BasePage):
             new_state = not self.light_states[2]
             self.set_light_state(2, new_state, reason='manual')
 
-    def trigger_alarm(self):
-        """Trigger buzzer alarm on Pico W."""
-        if self.micro and getattr(self.micro, 'is_connected', False):
-            self.status.config(text="Triggering alarm...")
-            def worker():
-                try:
-                    resp = self.micro.send_command("BUZZER PULSE")
-                    if resp == "PULSED" or resp:
-                        self.log("Alarm triggered")
-                        self.status.config(text="Alarm triggered")
-                    else:
-                        self.log("Alarm trigger failed")
-                        self.status.config(text="Alarm trigger failed")
-                except Exception as e:
-                    self.log(f"Alarm error: {e}")
-                    self.status.config(text="Alarm error")
-            threading.Thread(target=worker, daemon=True).start()
-        else:
-            self.status.config(text="Pico not connected")
-            self.log("Alarm: Pico not connected")
-
-    def _trigger_scheduled_alarm(self, reason=''):
-        """Internal method to trigger alarm from scheduler."""
-        if self.micro and getattr(self.micro, 'is_connected', False):
-            try:
-                resp = self.micro.send_command("BUZZER PULSE")
-                if resp:
-                    self.log(f"Scheduled alarm triggered ({reason})")
-                else:
-                    self.log(f"Scheduled alarm failed ({reason})")
-            except Exception as e:
-                self.log(f"Scheduled alarm error: {e}")
-        else:
-            self.log(f"Scheduled alarm skipped - Pico not connected ({reason})")
     def close_curtain(self, idx, reason=''):
         self.curtain_states[idx] = False
         self._update_curtain_visual(idx)
         self.log(f'Curtain {idx+1} closed ({reason})')
 
-    def _check_pir_motion(self):
-        """Deprecated - motion now handled on Pico side."""
-        pass
-
-    def _sync_light_state(self):
-        """Sync light state from Pico to keep UI in sync."""
-        if not self.micro or not getattr(self.micro, 'is_connected', False):
-            return
+    def add_test_data(self):
+        """Add test data to data.txt to verify the system is working."""
         try:
-            resp = self.micro.send_command("STATE 1")
-            if resp:
-                new_state = (str(resp).upper() == "ON")
-                if new_state != self.light_states[0]:
-                    self.light_states[0] = new_state
-                    self._update_light_visual(0)
-        except Exception:
-            pass
-        except Exception:
-            pass
+            self._log_to_database("test_sensor", 999)
+            self._log_to_database("Light_1", 1)
+            self._log_to_database("Motion_Sensor", 1)
+            self._log_to_database("Heating_3", 0)
+            
+            file_path = os.path.abspath(DATA_FILE)
+            self.log(f"Test data added to: {file_path}")
+            self.status.config(text=f"Test data added to data.txt")
+        except Exception as e:
+            self.log(f"Failed to add test data: {e}")
+            self.status.config(text=f"Test data failed: {e}")
 
-    def _turn_light_on(self, idx, reason='manual'):
-        """Turn light on and track the reason."""
-        if self.micro and getattr(self.micro, 'is_connected', False):
-            def worker():
-                try:
-                    resp = self.micro.send_command("TOGGLE 1" if not self.light_states[idx] else "STATE 1")
-                    if not self.light_states[idx]:
-                        self.micro.send_command("TOGGLE 1")
-                    self.light_states[idx] = True
-                    self.light_turn_on_reason[idx] = reason
-                    self._update_light_visual(idx)
-                    if reason == 'motion':
-                        self._start_motion_timer(idx)
-                    else:
-                        self._cancel_motion_timer(idx)
-                except Exception:
-                    pass
-            threading.Thread(target=worker, daemon=True).start()
-        else:
-            self.light_states[idx] = True
-            self.light_turn_on_reason[idx] = reason
-            self._update_light_visual(idx)
-            if reason == 'motion':
-                self._start_motion_timer(idx)
-
-    def _turn_light_off(self, idx, reason='manual'):
-        """Turn light off."""
-        if self.micro and getattr(self.micro, 'is_connected', False):
-            def worker():
-                try:
-                    if self.light_states[idx]:
-                        self.micro.send_command("TOGGLE 1")
-                    self.light_states[idx] = False
-                    self.light_turn_on_reason[idx] = None
-                    self._update_light_visual(idx)
-                    self._cancel_motion_timer(idx)
-                except Exception:
-                    pass
-            threading.Thread(target=worker, daemon=True).start()
-        else:
-            self.light_states[idx] = False
-            self.light_turn_on_reason[idx] = None
-            self._update_light_visual(idx)
-            self._cancel_motion_timer(idx)
-
-    def _start_motion_timer(self, idx):
-        """Start auto-off timer for motion-triggered light."""
-        self._cancel_motion_timer(idx)
-        def auto_off():
-            time.sleep(self.motion_timeout)
-            if self.light_turn_on_reason[idx] == 'motion':
-                self._turn_light_off(idx, reason='motion timeout')
-                self.log(f"Light {idx+1} auto-off (no motion)")
-        self.motion_auto_off_timer[idx] = threading.Thread(target=auto_off, daemon=True)
-        self.motion_auto_off_timer[idx].start()
-
-    def _reset_motion_timer(self, idx):
-        """Reset the motion timer when new motion detected."""
-        if self.light_turn_on_reason[idx] == 'motion':
-            self._start_motion_timer(idx)
-
-    def _cancel_motion_timer(self, idx):
-        """Cancel motion auto-off timer."""
-        if self.motion_auto_off_timer[idx]:
+    # -------------------- database --------------------
+    def _log_to_database(self, sensor_name, value):
+        """Buffer data to data.txt for later upload to database."""
+        if not psycopg2:
+            return
+        
+        # Create file if it doesn't exist
+        if not os.path.exists(DATA_FILE):
             try:
-                self.motion_auto_off_timer[idx] = None
-            except Exception:
-                pass
+                with open(DATA_FILE, 'w') as f:
+                    pass
+            except Exception as e:
+                print(f"Could not create data file: {e}")
+                return
+        
+        try:
+            with open(DATA_FILE, 'a') as f:
+                f.write(f"{sensor_name}, {value}\n")
+        except Exception as e:
+            print(f"Could not write to data file: {e}")
+    
+    def _database_uploader(self):
+        """Background thread that uploads buffered data every 5 seconds."""
+        while not getattr(self, '_scheduler_stop', False):
+            try:
+                self._upload_buffered_data()
+            except Exception as e:
+                print(f"Database upload error: {e}")
+            time.sleep(5)
+    
+    def _upload_buffered_data(self):
+        """Upload pending data from data.txt to database and mark as uploaded."""
+        if not os.path.exists(DATA_FILE):
+            return
+        
+        try:
+            with open(DATA_FILE, 'r') as f:
+                lines = f.readlines()
+        except Exception as e:
+            print(f"Could not read data file: {e}")
+            return
+        
+        if len(lines) == 0:
+            return
+        
+        # Separate pending and already uploaded lines
+        pending_lines = []
+        uploaded_lines = []
+        
+        for line in lines:
+            if line.strip():
+                pending_lines.append(line)
+        
+        if len(pending_lines) == 0:
+            return
+        
+        try:
+            connection = psycopg2.connect(
+                host=DB_HOST,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                port=DB_PORT
+            )
+            
+            cursor = connection.cursor()
+            
+            newly_uploaded = []
+            
+            for line in pending_lines:
+                line = line.strip()
+                
+                try:
+                    parts = line.split(',')
+                    
+                    if len(parts) == 2:
+                        sensor_name = parts[0].strip()[:50]  # Truncate to 50 chars max
+                        value = float(parts[1].strip())
+                        
+                        sql = "INSERT INTO sensor_metingen (sensor_naam, meting_waarde) VALUES (%s, %s)"
+                        cursor.execute(sql, (sensor_name, value))
+                        
+                        newly_uploaded.append(f"{line}\n")
+                        self.log(f"Uploaded: {sensor_name} -> {value}")
+                
+                except ValueError:
+                    self.log(f"Invalid data line: {line}")
+                    newly_uploaded.append(f"[ERROR] {line}\n")
+            
+            connection.commit()
+            cursor.close()
+            connection.close()
+            
+            # Keep uploaded entries in file (last 50 entries)
+            all_uploaded = uploaded_lines + newly_uploaded
+            recent_uploaded = all_uploaded[-50:]
+            
+            with open(DATA_FILE, 'w') as f:
+                for line in recent_uploaded:
+                    f.write(line)
+        
+        except Exception as e:
+            self.log(f"Database error: {e}")
+    
+    def _get_recent_database_entries(self, limit=10):
+        """Fetch the most recent entries from the database."""
+        if not psycopg2:
+            return []
+        
+        try:
+            connection = psycopg2.connect(
+                host=DB_HOST,
+                database=DB_NAME,
+                user=DB_USER,
+                password=DB_PASSWORD,
+                port=DB_PORT
+            )
+            
+            # Clear any error state from previous transactions
+            connection.rollback()
+            
+            cursor = connection.cursor()
+            
+            # Try multiple query strategies to handle different table schemas
+            queries = [
+                # Try with id and timestamp
+                """SELECT sensor_naam, meting_waarde, 
+                         COALESCE(timestamp, NOW()) as time 
+                   FROM sensor_metingen 
+                   ORDER BY id DESC 
+                   LIMIT %s""",
+                # Try with just id
+                """SELECT sensor_naam, meting_waarde 
+                   FROM sensor_metingen 
+                   ORDER BY id DESC 
+                   LIMIT %s""",
+                # Try with timestamp only (no id column)
+                """SELECT sensor_naam, meting_waarde, timestamp 
+                   FROM sensor_metingen 
+                   ORDER BY timestamp DESC 
+                   LIMIT %s""",
+                # Simplest fallback - just get last rows
+                """SELECT sensor_naam, meting_waarde 
+                   FROM sensor_metingen 
+                   LIMIT %s"""
+            ]
+            
+            results = []
+            last_error = None
+            
+            for sql in queries:
+                try:
+                    cursor.execute(sql, (limit,))
+                    results = cursor.fetchall()
+                    break  # Success, exit loop
+                except Exception as e:
+                    last_error = e
+                    continue  # Try next query
+            
+            cursor.close()
+            connection.close()
+            
+            if not results and last_error:
+                print(f"All database queries failed. Last error: {last_error}")
+            
+            return results
+        
+        except Exception as e:
+            print(f"Database connection error: {e}")
+            return []
+    
+    def show_database_window(self):
+        """Open popup window showing recent database entries."""
+        if not psycopg2:
+            self.log("psycopg2 library not installed")
+            return
+        
+        popup = tk.Toplevel(self)
+        popup.title("Recent Database Entries")
+        popup.geometry("600x400")
+        popup.configure(bg="#2a2a2a")
+        
+        tk.Label(popup, text="10 Most Recent Events", bg="#2a2a2a", fg="white", font=("Arial", 14, "bold")).pack(pady=10)
+        
+        # Create text widget with scrollbar
+        frame = tk.Frame(popup, bg="#2a2a2a")
+        frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        scrollbar = tk.Scrollbar(frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        text = tk.Text(frame, bg="#1e1e1e", fg="white", font=("Courier", 10), yscrollcommand=scrollbar.set)
+        text.pack(fill="both", expand=True)
+        scrollbar.config(command=text.yview)
+        
+        # Status label for button feedback
+        status_label = tk.Label(popup, text="", bg="#2a2a2a", fg="yellow", font=("Arial", 10))
+        status_label.pack(pady=5)
+        
+        # Button functions
+        def test_connection():
+            """Test database connection."""
+            status_label.config(text="Testing connection...", fg="yellow")
+            
+            def worker():
+                try:
+                    connection = psycopg2.connect(
+                        host=DB_HOST,
+                        database=DB_NAME,
+                        user=DB_USER,
+                        password=DB_PASSWORD,
+                        port=DB_PORT
+                    )
+                    connection.close()
+                    status_label.config(text="✓ Connection successful!", fg="green")
+                    self.log("Database connection test: SUCCESS")
+                except Exception as e:
+                    status_label.config(text=f"✗ Connection failed: {e}", fg="red")
+                    self.log(f"Database connection test: FAILED - {e}")
+            
+            threading.Thread(target=worker, daemon=True).start()
+        
+        def push_now():
+            """Immediately push buffered data to database."""
+            status_label.config(text="Pushing data...", fg="yellow")
+            
+            def worker():
+                try:
+                    self._upload_buffered_data()
+                    status_label.config(text="✓ Data pushed successfully!", fg="green")
+                    self.log("Manual data push completed")
+                except Exception as e:
+                    status_label.config(text=f"✗ Push failed: {e}", fg="red")
+                    self.log(f"Manual data push failed: {e}")
+            
+            threading.Thread(target=worker, daemon=True).start()
+        
+        def refresh():
+            """Pull latest data from database and show pending data.txt entries."""
+            text.delete(1.0, 'end')
+            text.insert('end', "Loading...\n")
+            status_label.config(text="Pulling data...", fg="yellow")
+            
+            def worker():
+                try:
+                    # Show data.txt file location
+                    file_path = os.path.abspath(DATA_FILE)
+                    text.delete(1.0, 'end')
+                    text.insert('end', f"Data file: {file_path}\n\n")
+                    
+                    # First show pending data from data.txt
+                    pending_count = 0
+                    if os.path.exists(DATA_FILE):
+                        try:
+                            with open(DATA_FILE, 'r') as f:
+                                all_lines = f.readlines()
+                            
+                            # Separate pending from uploaded
+                            pending_lines = [line for line in all_lines if line.strip()]
+                            
+                            if pending_lines:
+                                text.insert('end', "=== PENDING (waiting for upload) ===\n")
+                                text.insert('end', f"{'Sensor/Device':<25} {'Value':<10}\n")
+                                text.insert('end', "-" * 40 + "\n")
+                                
+                                for line in pending_lines:
+                                    line = line.strip()
+                                    if line:
+                                        try:
+                                            parts = line.split(',')
+                                            if len(parts) == 2:
+                                                sensor = parts[0].strip()
+                                                value = parts[1].strip()
+                                                value_str = "ON" if value == "1" else ("OFF" if value == "0" else value)
+                                                text.insert('end', f"{sensor:<25} {value_str:<10}\n")
+                                                pending_count += 1
+                                        except Exception:
+                                            pass
+                                
+                                text.insert('end', "\n")
+                        except Exception as e:
+                            text.insert('end', f"Could not read data.txt: {e}\n\n")
+                    else:
+                        text.insert('end', "data.txt does not exist yet. Click 'Add Test Data' button to create it.\n\n")
+                    
+                    # Then show database entries
+                    entries = self._get_recent_database_entries(10)
+                    
+                    if entries:
+                        text.insert('end', "=== DATABASE (from server) ===\n")
+                        text.insert('end', f"{'Sensor/Device':<25} {'Value':<10} {'Timestamp'}\n")
+                        text.insert('end', "-" * 70 + "\n")
+                        
+                        for entry in entries:
+                            if len(entry) == 3:
+                                sensor, value, timestamp = entry
+                                value_str = "ON" if value == 1 else ("OFF" if value == 0 else str(value))
+                                text.insert('end', f"{sensor:<25} {value_str:<10} {timestamp}\n")
+                            elif len(entry) == 2:
+                                sensor, value = entry
+                                value_str = "ON" if value == 1 else ("OFF" if value == 0 else str(value))
+                                text.insert('end', f"{sensor:<25} {value_str:<10} (no timestamp)\n")
+                    elif os.path.exists(DATA_FILE):
+                        text.insert('end', "No database entries found.\n")
+                    
+                    msg = f"✓ {pending_count} pending, {len(entries)} in database"
+                    status_label.config(text=msg, fg="green")
+                except Exception as e:
+                    text.delete(1.0, 'end')
+                    text.insert('end', f"Error fetching data: {e}\n")
+                    status_label.config(text=f"✗ Pull failed: {e}", fg="red")
+            
+            threading.Thread(target=worker, daemon=True).start()
+        
+        # Button row
+        button_frame = tk.Frame(popup, bg="#2a2a2a")
+        button_frame.pack(pady=10)
+        
+        tk.Button(button_frame, text="Test Connection", command=test_connection, bg="#444444", fg="white", font=("Arial", 11), width=15).grid(row=0, column=0, padx=5)
+        tk.Button(button_frame, text="Push Now", command=push_now, bg="#444444", fg="white", font=("Arial", 11), width=15).grid(row=0, column=1, padx=5)
+        tk.Button(button_frame, text="Pull / Refresh", command=refresh, bg="#444444", fg="white", font=("Arial", 11), width=15).grid(row=0, column=2, padx=5)
+        
+        # Initial load
+        refresh()
 
     # -------------------- logging --------------------
     def log(self, msg):

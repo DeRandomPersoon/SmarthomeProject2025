@@ -1,0 +1,4 @@
+test_sensor, 999
+Light_1, 1
+Motion_Sensor, 1
+Heating_3, 0
