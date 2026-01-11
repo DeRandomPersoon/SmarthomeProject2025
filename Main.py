@@ -1,6 +1,18 @@
 from DashBoard import App
 import argparse
 import sys
+import os
+import sys
+
+# Add AIFiles to path
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'AIFiles'))
+
+try:
+    from Smarthome_AI import check_schedule
+    AI_AVAILABLE = True
+except Exception as e:
+    print(f"AI module import failed: {e}")
+    AI_AVAILABLE = False
 
 def try_import_micro():
 	try:
@@ -22,6 +34,13 @@ def main(argv=None):
 		print('Micro skipped')
 
 	app = App()
+
+	if AI_AVAILABLE:
+		def periodic_ai_check():
+			check_schedule()
+			app.after(100000, periodic_ai_check)  # Check every 100 seconds
+		app.after(100000, periodic_ai_check)
+	
 	app.mainloop()
 
 if __name__ == "__main__":

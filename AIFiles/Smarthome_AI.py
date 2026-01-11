@@ -66,8 +66,9 @@ def job():
     return voorspelde_kilowatt
 
 schedule.every().day.at('00:00').do(job)
-while True:
+
+def check_schedule():
+    """Check and run pending scheduled tasks. Call this periodically."""
     schedule.run_pending()
-    time.sleep(1)
 
 
