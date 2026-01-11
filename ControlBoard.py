@@ -24,7 +24,6 @@ except Exception:
 SETTINGS_FILE = os.path.join(os.path.dirname(__file__), "settings.json")
 DATA_FILE = os.path.join(os.path.dirname(__file__), "data.txt")
 
-# Database configuration
 DB_HOST = "4.233.209.202"
 DB_NAME = "TinyHomeTeam"
 DB_USER = "postgres"
@@ -35,17 +34,14 @@ class ControlBoard(BasePage):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        # Hide this page's nav; MainPage provides the visible one
         self.hide_nav()
 
-        # Top bar with View Database button
         top = tk.Frame(self.content, bg="#1e1e1e")
         top.pack(fill="x", padx=10, pady=(10, 0))
         if psycopg2:
             tk.Button(top, text="View Database", command=self.show_database_window, bg="#444444", fg="white").pack(side="right", padx=5)
             tk.Button(top, text="Add Test Data", command=self.add_test_data, bg="#444444", fg="white").pack(side="right", padx=5)
 
-        # Controls area with buttons and per-light times next to each button
         self.btn_frame = tk.Frame(self.content, bg="#1e1e1e")
         self.btn_frame.pack(expand=True, pady=20)
 
@@ -67,11 +63,9 @@ class ControlBoard(BasePage):
                 command=lambda n=i: self._device_button_pressed(n),
             )
             b.grid(row=0, column=0, padx=(0,10))
-            # remember original bg for toggling visuals
             b._orig_bg = b.cget('bg')
             self.light_buttons.append(b)
 
-            # On / Off fields to the right of the button
             on_var = tk.StringVar(value="07:00")
             off_var = tk.StringVar(value="23:00")
             self.light_on_vars.append(on_var)
@@ -85,18 +79,15 @@ class ControlBoard(BasePage):
             off_entry = tk.Entry(row, textvariable=off_var, width=6)
             off_entry.grid(row=0, column=4, padx=(4,10))
 
-            # immediate update on edit
             on_var.trace_add('write', lambda *a, idx=i: self.per_light_slot_update(idx))
             off_var.trace_add('write', lambda *a, idx=i: self.per_light_slot_update(idx))
 
-            # quick clear slot button and schedule editor popup
             tk.Button(row, text="Clear slot", command=lambda n=i: self.clear_light_slot(n)).grid(row=0, column=5, padx=6)
             tk.Button(row, text="Edit schedule", command=lambda n=i: self.show_schedule_editor(n)).grid(row=0, column=6, padx=6)
 
         self.status = tk.Label(self.content, text="Pico: not connected", bg="#1e1e1e", fg="white", font=("Arial", 12))
         self.status.pack(pady=8)
 
-        # WiFi connection controls
         self.ip_var = tk.StringVar(value="192.168.2.98")
         ip_row = tk.Frame(self.content, bg="#1e1e1e")
         ip_row.pack(pady=(0,10))
@@ -105,16 +96,10 @@ class ControlBoard(BasePage):
         ip_entry.pack(side="left", padx=4)
         tk.Button(ip_row, text="Connect", command=self._connect_wifi).pack(side="left", padx=6)
 
-        # microcontroller state
         self.micro = None
         self.selected_port = None
 
-        # Scheduling state
-        # lights: list of {'light': idx, 'on': 'HH:MM', 'off': 'HH:MM'}
-        # curtains: list of {'open': 'HH:MM', 'close': 'HH:MM', 'duration': seconds, 'last_open': None, 'last_close': None}
-        # heating: list of {'on': 'HH:MM', 'off': 'HH:MM'}
         self.schedules = {"lights": [], "curtains": [], "heating": []}
-        # three controllable devices now: light (idx 0), curtain (idx 1), heating (idx 2)
         self.light_states = [False] * 3
         self.curtain_states = [False] * 3
 
@@ -213,7 +198,6 @@ class ControlBoard(BasePage):
             if ok:
                 self.micro = wc
                 self.status.config(text=f"Pico: connected ({ip})")
-                # Save IP to settings
                 try:
                     settings = {"pico_ip": ip, "baud": 115200}
                     if os.path.exists(SETTINGS_FILE):
@@ -230,7 +214,6 @@ class ControlBoard(BasePage):
             self.status.config(text=f"Pico: error ({e})")
 
     def _connect_auto(self):
-        """Auto-detect first available port and connect."""
         if not MicroController:
             self.status.config(text="pyserial not installed")
             return
@@ -245,28 +228,23 @@ class ControlBoard(BasePage):
         threading.Thread(target=self._connect_worker, args=(port, 115200), daemon=True).start()
 
     def toggle_light(self, idx):
-        # If microcontroller present, send command; otherwise simulate local toggle
         if self.micro and getattr(self.micro, 'is_connected', False):
             self.status.config(text=f"Sending toggle {idx+1}...")
             def worker():
                 ok = self.micro.toggle_led(idx + 1)
                 if ok:
-                    # flip local state
                     self.light_states[idx] = not self.light_states[idx]
                     self._update_light_visual(idx)
-                    # Log to database
                     device_name = "Light" if idx == 0 else ("Curtain" if idx == 1 else "Heating")
                     self._log_to_database(f"{device_name}_{idx+1}", 1 if self.light_states[idx] else 0)
                 self.status.config(text=(f"Toggled {idx+1}" if ok else "Send failed"))
             threading.Thread(target=worker, daemon=True).start()
             return
 
-        # local simulated toggle
         self.light_states[idx] = not self.light_states[idx]
         self._update_light_visual(idx)
         self.status.config(text=f"Light {idx+1} toggled (simulated)")
 
-    # -------------------- visuals / helpers --------------------
     def _update_light_visual(self, idx):
         b = self.light_buttons[idx]
         if self.light_states[idx]:
@@ -276,13 +254,11 @@ class ControlBoard(BasePage):
 
     def _update_curtain_visual(self, idx):
         b = self.light_buttons[idx]
-        # use the same button as light  for visual consistency
         if self.curtain_states[idx]:
             b.config(bg="#8ec6ff", fg="black")
         else:
             b.config(bg=b._orig_bg, fg="black")
 
-    # -------------------- schedule persistence --------------------
     def _load_schedules(self):
         try:
             if os.path.exists(SETTINGS_FILE):
@@ -293,7 +269,6 @@ class ControlBoard(BasePage):
                     self.schedules['curtains'] = sched.get('curtains', [])
         except Exception:
             pass
-        # reflect per-light slots in the on/off fields
         self._set_per_light_vars_from_schedules()
 
     def _set_per_light_vars_from_schedules(self):
@@ -301,7 +276,6 @@ class ControlBoard(BasePage):
             slot = None
             try:
                 if i == 0:
-                    # lights
                     for s in reversed(self.schedules.get('lights', [])):
                         if s.get('light') == i:
                             slot = s
@@ -310,7 +284,6 @@ class ControlBoard(BasePage):
                         self.light_on_vars[i].set(slot['on'])
                         self.light_off_vars[i].set(slot['off'])
                 elif i == 1:
-                    # curtains - use last curtain slot
                     for s in reversed(self.schedules.get('curtains', [])):
                         slot = s
                         break
@@ -318,7 +291,6 @@ class ControlBoard(BasePage):
                         self.light_on_vars[i].set(slot['open'])
                         self.light_off_vars[i].set(slot['close'])
                 elif i == 2:
-                    # heating
                     for s in reversed(self.schedules.get('heating', [])):
                         slot = s
                         break
@@ -364,12 +336,9 @@ class ControlBoard(BasePage):
             except Exception:
                 pass
 
-        # reflect per-light slots in the small per-button fields
         self._set_per_light_vars_from_schedules()
 
-    # -------------------- schedule editors --------------------
     def add_light_timeslot(self):
-        # kept for backward compatibility but not used in the main UI anymore
         on = self.light_on_vars[0].get().strip() if self.light_on_vars else "07:00"
         off = self.light_off_vars[0].get().strip() if self.light_off_vars else "23:00"
         try:
@@ -384,36 +353,28 @@ class ControlBoard(BasePage):
         self.log(f'Added light slot: {on} -> {off}')
 
     def per_light_slot_update(self, idx):
-        """Immediate update of the schedule for a specific device: light, curtain or heating."""
         on = self.light_on_vars[idx].get().strip()
         off = self.light_off_vars[idx].get().strip()
         try:
             _ = datetime.datetime.strptime(on, '%H:%M')
             _ = datetime.datetime.strptime(off, '%H:%M')
         except Exception:
-            # don't spam the log while user is editing partial time strings
             return
 
         if idx == 0:
-            # regular light
             self.schedules['lights'] = [s for s in self.schedules['lights'] if s.get('light') != idx]
             self.schedules['lights'].append({'light': idx, 'on': on, 'off': off})
             self._save_schedules()
             self._refresh_schedule_views()
             self.log(f'Updated light {idx+1} slot: {on} -> {off}')
         elif idx == 1:
-            # curtains: map to open/close
-            # use default duration if none
             dur = int(self.curtain_duration_var.get()) if getattr(self, 'curtain_duration_var', None) else 5
             self.schedules['curtains'].append({'open': on, 'close': off, 'duration': dur, 'last_open': None, 'last_close': None})
             self._save_schedules()
             self._refresh_schedule_views()
             self.log(f'Updated curtains slot: {on} -> {off} (+{dur}s)')
         else:
-            # heating
             self.schedules['heating'] = [s for s in self.schedules['heating']]
-            # replace last heating slot (simple behavior)
-            # remove previous heating slots and add this one
             self.schedules['heating'] = []
             self.schedules['heating'].append({'on': on, 'off': off})
             self._save_schedules()
@@ -429,9 +390,7 @@ class ControlBoard(BasePage):
             self._refresh_schedule_views()
             self.log(f'Cleared slot for light {idx+1}')
 
-    # -------------------- schedule editor popups --------------------
     def show_schedule_editor(self, idx):
-        """Open a popup window to edit the schedules for the given device index (0=light,1=curtain,2=heating)."""
         if idx == 0:
             self._show_light_schedule_popup(idx)
         elif idx == 1:
@@ -440,7 +399,6 @@ class ControlBoard(BasePage):
             self._show_heating_schedule_popup()
 
     def _show_light_schedule_popup(self, idx):
-        # small helper to better name devices in logs/UI
         def _device_label(i):
             return "Light" if i == 0 else ("Curtain" if i == 1 else "Heating")
 
@@ -666,13 +624,11 @@ class ControlBoard(BasePage):
         else:
             self.log('No inline curtain list available - use Edit schedule on the device to remove slots')
 
-    # -------------------- scheduler loop --------------------
     def _schedule_worker(self):
         while not getattr(self, '_scheduler_stop', False):
             now = datetime.datetime.now()
             now_time = now.time()
 
-            # lights (button 1)
             for slot in self.schedules.get('lights', []):
                 try:
                     on_t = datetime.datetime.strptime(slot['on'], '%H:%M').time()
@@ -686,7 +642,6 @@ class ControlBoard(BasePage):
                 if desired != self.light_states[idx]:
                     self.set_light_state(idx, desired, reason='schedule')
 
-            # heating schedules
             for slot in self.schedules.get('heating', []):
                 try:
                     on_h = datetime.datetime.strptime(slot['on'], '%H:%M').time()
@@ -697,52 +652,41 @@ class ControlBoard(BasePage):
                 if desired_h != self.light_states[2]:
                     self.set_light_state(2, desired_h, reason='schedule')
 
-            # curtains (button 2)
             for slot in self.schedules.get('curtains', []):
                 try:
                     open_t = datetime.datetime.strptime(slot['open'], '%H:%M').time()
                     close_t = datetime.datetime.strptime(slot['close'], '%H:%M').time()
                 except Exception:
                     continue
-                # open at exact minute (once per day)
                 if now_time.hour == open_t.hour and now_time.minute == open_t.minute:
                     if slot.get('last_open') != now.date().isoformat():
                         self.open_curtain(1, slot.get('duration', 5), reason='schedule')
                         slot['last_open'] = now.date().isoformat()
                         self._save_schedules()
-                # close at exact minute (once per day)
                 if now_time.hour == close_t.hour and now_time.minute == close_t.minute:
                     if slot.get('last_close') != now.date().isoformat():
                         self.close_curtain(1, reason='schedule')
                         slot['last_close'] = now.date().isoformat()
                         self._save_schedules()
 
-            # sleep - check every 20 seconds
             for _ in range(4):
                 if getattr(self, '_scheduler_stop', False):
                     break
                 time.sleep(5)
 
     def _is_time_in_range(self, start, end, now_time):
-        # accepts datetime.time objects, handles overnight ranges
         if start <= end:
             return start <= now_time < end
         else:
-            # overnight e.g. 22:00 - 07:00
             return now_time >= start or now_time < end
 
-    # -------------------- actions --------------------
     def set_light_state(self, idx, on, reason=''):
         self.light_states[idx] = bool(on)
         self._update_light_visual(idx)
         name = "Light" if idx == 0 else ("Curtain" if idx == 1 else "Heating")
         self.log(f'{name} {idx+1} -> {"ON" if on else "OFF"} ({reason})')
-        # placeholder for microcontroller integration later
-        # if self.micro and self.micro.is_connected:
-        #     self.micro.toggle_led(idx + 1)
 
     def open_curtain(self, idx, duration=5, reason=''):
-        # open (momentary) and schedule close after duration
         self.curtain_states[idx] = True
         self._update_curtain_visual(idx)
         self.log(f'Curtain {idx+1} opened for {duration}s ({reason})')
@@ -755,16 +699,12 @@ class ControlBoard(BasePage):
         threading.Thread(target=closer, daemon=True).start()
 
     def _device_button_pressed(self, idx):
-        """Handle device button presses: toggle light/heating or momentary open curtains."""
         if idx == 0:
-            # toggle light
             self.toggle_light(0)
         elif idx == 1:
-            # curtains -> momentary open (use default duration)
             dur = int(self.curtain_duration_var.get()) if getattr(self, 'curtain_duration_var', None) else 5
             self.open_curtain(1, duration=dur, reason='manual')
         elif idx == 2:
-            # heating toggle
             new_state = not self.light_states[2]
             self.set_light_state(2, new_state, reason='manual')
 
@@ -774,7 +714,6 @@ class ControlBoard(BasePage):
         self.log(f'Curtain {idx+1} closed ({reason})')
 
     def add_test_data(self):
-        """Add test data to data.txt to verify the system is working."""
         try:
             self._log_to_database("test_sensor", 999)
             self._log_to_database("Light_1", 1)
@@ -788,29 +727,25 @@ class ControlBoard(BasePage):
             self.log(f"Failed to add test data: {e}")
             self.status.config(text=f"Test data failed: {e}")
 
-    # -------------------- database --------------------
     def _log_to_database(self, sensor_name, value):
-        """Buffer data to data.txt for later upload to database."""
         if not psycopg2:
             return
         
-        # Create file if it doesn't exist
         if not os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE, 'w') as f:
                     pass
             except Exception as e:
-                print(f"Could not create data file: {e}")
+                print(f"Create data file failed: {e}")
                 return
         
         try:
             with open(DATA_FILE, 'a') as f:
                 f.write(f"{sensor_name}, {value}\n")
         except Exception as e:
-            print(f"Could not write to data file: {e}")
+            print(f"Write data file failed: {e}")
     
     def _database_uploader(self):
-        """Background thread that uploads buffered data every 5 seconds."""
         while not getattr(self, '_scheduler_stop', False):
             try:
                 self._upload_buffered_data()
@@ -819,7 +754,6 @@ class ControlBoard(BasePage):
             time.sleep(5)
     
     def _upload_buffered_data(self):
-        """Upload pending data from data.txt to database and mark as uploaded."""
         if not os.path.exists(DATA_FILE):
             return
         
@@ -827,13 +761,12 @@ class ControlBoard(BasePage):
             with open(DATA_FILE, 'r') as f:
                 lines = f.readlines()
         except Exception as e:
-            print(f"Could not read data file: {e}")
+            print(f"Read data file failed: {e}")
             return
         
         if len(lines) == 0:
             return
         
-        # Separate pending and already uploaded lines
         pending_lines = []
         uploaded_lines = []
         
@@ -864,7 +797,7 @@ class ControlBoard(BasePage):
                     parts = line.split(',')
                     
                     if len(parts) == 2:
-                        sensor_name = parts[0].strip()[:50]  # Truncate to 50 chars max
+                        sensor_name = parts[0].strip()[:50]
                         value = float(parts[1].strip())
                         
                         sql = "INSERT INTO sensor_metingen (sensor_naam, meting_waarde) VALUES (%s, %s)"
@@ -881,7 +814,6 @@ class ControlBoard(BasePage):
             cursor.close()
             connection.close()
             
-            # Keep uploaded entries in file (last 50 entries)
             all_uploaded = uploaded_lines + newly_uploaded
             recent_uploaded = all_uploaded[-50:]
             
@@ -893,7 +825,6 @@ class ControlBoard(BasePage):
             self.log(f"Database error: {e}")
     
     def _get_recent_database_entries(self, limit=10):
-        """Fetch the most recent entries from the database."""
         if not psycopg2:
             return []
         
@@ -906,7 +837,6 @@ class ControlBoard(BasePage):
                 port=DB_PORT
             )
             
-            # Clear any error state from previous transactions
             connection.rollback()
             
             cursor = connection.cursor()
@@ -951,16 +881,15 @@ class ControlBoard(BasePage):
             connection.close()
             
             if not results and last_error:
-                print(f"All database queries failed. Last error: {last_error}")
+                print(f"DB queries failed: {last_error}")
             
             return results
         
         except Exception as e:
-            print(f"Database connection error: {e}")
+            print(f"DB connection failed: {e}")
             return []
     
     def show_database_window(self):
-        """Open popup window showing recent database entries."""
         if not psycopg2:
             self.log("psycopg2 library not installed")
             return
@@ -972,7 +901,6 @@ class ControlBoard(BasePage):
         
         tk.Label(popup, text="10 Most Recent Events", bg="#2a2a2a", fg="white", font=("Arial", 14, "bold")).pack(pady=10)
         
-        # Create text widget with scrollbar
         frame = tk.Frame(popup, bg="#2a2a2a")
         frame.pack(fill="both", expand=True, padx=10, pady=10)
         
@@ -983,13 +911,10 @@ class ControlBoard(BasePage):
         text.pack(fill="both", expand=True)
         scrollbar.config(command=text.yview)
         
-        # Status label for button feedback
         status_label = tk.Label(popup, text="", bg="#2a2a2a", fg="yellow", font=("Arial", 10))
         status_label.pack(pady=5)
         
-        # Button functions
         def test_connection():
-            """Test database connection."""
             status_label.config(text="Testing connection...", fg="yellow")
             
             def worker():
@@ -1011,7 +936,6 @@ class ControlBoard(BasePage):
             threading.Thread(target=worker, daemon=True).start()
         
         def push_now():
-            """Immediately push buffered data to database."""
             status_label.config(text="Pushing data...", fg="yellow")
             
             def worker():
@@ -1026,26 +950,22 @@ class ControlBoard(BasePage):
             threading.Thread(target=worker, daemon=True).start()
         
         def refresh():
-            """Pull latest data from database and show pending data.txt entries."""
             text.delete(1.0, 'end')
             text.insert('end', "Loading...\n")
             status_label.config(text="Pulling data...", fg="yellow")
             
             def worker():
                 try:
-                    # Show data.txt file location
                     file_path = os.path.abspath(DATA_FILE)
                     text.delete(1.0, 'end')
                     text.insert('end', f"Data file: {file_path}\n\n")
                     
-                    # First show pending data from data.txt
                     pending_count = 0
                     if os.path.exists(DATA_FILE):
                         try:
                             with open(DATA_FILE, 'r') as f:
                                 all_lines = f.readlines()
                             
-                            # Separate pending from uploaded
                             pending_lines = [line for line in all_lines if line.strip()]
                             
                             if pending_lines:
@@ -1073,7 +993,6 @@ class ControlBoard(BasePage):
                     else:
                         text.insert('end', "data.txt does not exist yet. Click 'Add Test Data' button to create it.\n\n")
                     
-                    # Then show database entries
                     entries = self._get_recent_database_entries(10)
                     
                     if entries:
@@ -1102,7 +1021,6 @@ class ControlBoard(BasePage):
             
             threading.Thread(target=worker, daemon=True).start()
         
-        # Button row
         button_frame = tk.Frame(popup, bg="#2a2a2a")
         button_frame.pack(pady=10)
         
@@ -1110,10 +1028,8 @@ class ControlBoard(BasePage):
         tk.Button(button_frame, text="Push Now", command=push_now, bg="#444444", fg="white", font=("Arial", 11), width=15).grid(row=0, column=1, padx=5)
         tk.Button(button_frame, text="Pull / Refresh", command=refresh, bg="#444444", fg="white", font=("Arial", 11), width=15).grid(row=0, column=2, padx=5)
         
-        # Initial load
         refresh()
 
-    # -------------------- logging --------------------
     def log(self, msg):
         ts = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         try:

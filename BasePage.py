@@ -1,17 +1,9 @@
-"""
-Shared base frame that provides the nav bar and a content area used by every page.
-Keeps navigation drawing logic in one place so pages only worry about their own widgets.
-Extend this class when adding new screens to keep layout consistent.
-"""
+"""Base frame with nav bar and content area for all pages."""
 
 import tkinter as tk
 import math
 
 class BasePage(tk.Frame):
-    """Base page with fixed bottom nav bar shared across pages.
-
-    Children should build UI inside `self.content`.
-    """
     def __init__(self, parent, *args, **kwargs):
         super().__init__(parent, bg="#1e1e1e", *args, **kwargs)
         self.parent = parent
@@ -88,11 +80,9 @@ class BasePage(tk.Frame):
                 pass
 
     def on_nav(self, idx):
-        # Prefer child handler; else bubble to parent if available
         if hasattr(self, 'handle_nav') and callable(getattr(self, 'handle_nav')):
             return self.handle_nav(idx)
         parent_on_nav = getattr(self.parent, 'on_nav', None)
         if callable(parent_on_nav):
             return parent_on_nav(idx)
-        # no-op fallback
         return None

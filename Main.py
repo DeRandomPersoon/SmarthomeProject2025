@@ -1,37 +1,28 @@
-# Smart Home launcher for the TinyHouse dashboard.
-# Starts the Tkinter UI, parses command-line switches, and keeps all feature logic in the pages it loads.
-# Avoid placing control or hardware logic here so the entry point stays lightweight and predictable.
-
-# Main.py
 from DashBoard import App
 import argparse
 import sys
 
 
 def try_import_micro():
-	"""Attempt to import `Micro` safely and report status."""
 	try:
-		import Micro  # triggers Micro's auto-start blink on import
-		print("Micro imported successfully (auto-start blink may be running).")
+		import Micro
+		print("Micro imported")
 		return True
 	except Exception as e:
-		print("Micro import failed", e)
+		print(f"Micro import failed: {e}")
 		return False
 
 
 def main(argv=None):
-	"""Main entrypoint. Use --no-micro to disable importing the Micro module."""
-	parser = argparse.ArgumentParser(description='Start the TinyHouse Smart Home System')
-	parser.add_argument('--no-micro', action='store_true', help='Disable Micro module import (no auto blink)')
+	parser = argparse.ArgumentParser(description='TinyHouse Smart Home')
+	parser.add_argument('--no-micro', action='store_true', help='Skip Micro import')
 	args = parser.parse_args(argv)
 
-	# Import Micro (optional) before starting GUI so any auto-start behavior runs.
 	if not args.no_micro:
 		try_import_micro()
 	else:
-		print('Micro import skipped (--no-micro)')
+		print('Micro skipped')
 
-	# Start the dashboard GUI
 	app = App()
 	app.mainloop()
 

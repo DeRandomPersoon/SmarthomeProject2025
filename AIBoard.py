@@ -1,8 +1,4 @@
-"""
-AI utilities page for fitting a simple model and predicting energy output.
-Loads datasets from local CSV files, fetches cloud cover data, and exposes quick buttons for training/prediction.
-Designed as a contained panel so experiments stay separate from the main dashboard.
-"""
+"""AI tools for solar panel energy prediction."""
 
 import tkinter as tk
 from tkinter import ttk
@@ -36,11 +32,9 @@ except Exception:
 
 
 class AIBoard(BasePage):
-    """Simple AI tools panel: fit a linear model from local CSV and predict from a user input."""
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        # Use shared layout; hide this page's nav when embedded under MainPage
         self.hide_nav()
 
         top = tk.Frame(self.content, bg="#1e1e1e")
@@ -92,7 +86,6 @@ class AIBoard(BasePage):
     def _available_datasets(self):
         files = []
         base = os.path.dirname(__file__)
-        # look in AIBoard folder, AIFiles folder, and project root
         candidates = [base, os.path.join(base, 'AIFiles'), os.path.abspath(os.path.join(base, '..'))]
         for d in candidates:
             for f in ("panelen_data.csv", "panelen_data_extra.csv"):
@@ -108,7 +101,6 @@ class AIBoard(BasePage):
             p = os.path.join(d, name)
             if os.path.exists(p):
                 return p
-        # fallback to the provided name (will raise later if missing)
         return os.path.join(base, name)
 
     def refresh(self):
@@ -116,7 +108,6 @@ class AIBoard(BasePage):
         self.safe_insert("Datasets refreshed\n")
 
     def safe_insert(self, text):
-        """Insert text into result Text widget safely from any thread."""
         try:
             if getattr(self, 'result', None) and self.result.winfo_exists():
                 self.result.insert("end", text)
@@ -156,7 +147,6 @@ class AIBoard(BasePage):
                     return
                 coeff = al.gradient_descent(xs, ys, num_iterations=50000, learning_rate=0.0001)
                 self.a, self.b = coeff[0], coeff[1]
-                # update UI on main thread
                 self.after(0, lambda: self.safe_set_coef(f"Model: a={self.a:.3f}, b={self.b:.6f}"))
                 self.after(0, lambda: self.safe_insert(f'Fitted model from {os.path.basename(dataset)}\n  a={self.a:.3f}, b={self.b:.6f}\n'))
             except FileNotFoundError:
@@ -167,7 +157,6 @@ class AIBoard(BasePage):
         threading.Thread(target=worker, daemon=True).start()
 
     def fetch_cloud_cover(self):
-        """Fetch current cloud cover from Open-Meteo API"""
         def worker():
             try:
                 self.after(0, lambda: self.cloud_entry.config(text="Fetching..."))
@@ -187,7 +176,6 @@ class AIBoard(BasePage):
                 hourly = response.Hourly()
                 hourly_cloud_cover = hourly.Variables(0).ValuesAsNumpy()
                 
-                # Calculate average cloud cover for today (first 24 hours)
                 avg_cloud_cover = float(sum(hourly_cloud_cover[:24]) / 24)
                 self.cloud_var.set(avg_cloud_cover)
                 

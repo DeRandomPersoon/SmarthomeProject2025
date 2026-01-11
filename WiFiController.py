@@ -1,19 +1,10 @@
-"""
-Lightweight HTTP client for talking to the Pico W firmware endpoints.
-Wraps GET calls for toggling lights and buzzer while handling basic connection testing.
-Used as a drop-in replacement for the old serial-based MicroController.
-"""
+"""HTTP client for Pico W control over WiFi."""
 import requests
 import threading
 
 
 class WiFiController:
-    """
-    HTTP client for controlling Pico W over WiFi.
-    
-    Replaces serial-based MicroController for WiFi-enabled Pico devices.
-    """
-    def __init__(self, host="pico.local", port=80, timeout=2.0):
+	def __init__(self, host="pico.local", port=80, timeout=2.0):
         self.host = host
         self.port = port
         self.timeout = timeout
@@ -38,17 +29,13 @@ class WiFiController:
         return False
 
     def disconnect(self):
-        """No-op for HTTP (stateless)."""
-        self.is_connected = False
+
 
     def send_command(self, cmd, timeout=None):
-        """Send an HTTP command and return response."""
-        if not self.is_connected:
-            raise RuntimeError("Not connected to Pico W")
-        
-        t = timeout or self.timeout
-        # Use longer timeout for buzzer pulse (needs 2+ seconds)
-        if cmd == "BUZZER PULSE":
+		if not self.is_connected:
+			raise RuntimeError("Not connected to Pico W")
+		
+		t = timeout or self.timeout
             t = 5.0
         
         try:

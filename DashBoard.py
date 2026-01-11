@@ -1,8 +1,4 @@
-"""
-Main dashboard shell that hosts the gauge view, AI tools, control panel, and settings page.
-Handles navigation between pages while keeping the bottom nav visuals consistent.
-All heavy lifting lives in the child pages; this file wires them together and handles top-level layout.
-"""
+"""Main dashboard with gauge, AI, controls, and settings."""
 
 import tkinter as tk
 import math

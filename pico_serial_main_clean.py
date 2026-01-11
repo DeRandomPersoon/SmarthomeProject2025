@@ -1,7 +1,4 @@
-"""WiFi HTTP server for Pico W: control LED (Pin 15) and buzzer (Pin 11).
-
-Upload as main.py to your Pico W.
-"""
+"""WiFi HTTP server for Pico W: LED (Pin 15), Buzzer (Pin 11), PIR (Pin 2)."""
 
 import network
 import socket
@@ -9,23 +6,19 @@ import json
 from machine import Pin
 import utime
 
-# ===== WiFi Configuration =====
 SSID = "H368N94FF9A"
 PASSWORD = "45EEFEFE9547"
 
-# ===== GPIO Setup =====
 LED = Pin(15, Pin.OUT)
 BUZZER = Pin(11, Pin.OUT)
 PIR = Pin(2, Pin.IN, Pin.PULL_DOWN)
 
-# Motion detection state
 motion_triggered_light = False
 last_motion_time = 0
 motion_timeout = 180
 
 
 def connect_wifi():
-    """Connect Pico W to WiFi."""
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     wlan.connect(SSID, PASSWORD)
@@ -34,15 +27,14 @@ def connect_wifi():
         utime.sleep(0.5)
         timeout -= 1
     if wlan.isconnected():
-        print("WiFi connected:", wlan.ifconfig()[0])
+        print("WiFi OK:", wlan.ifconfig()[0])
         return wlan
     else:
-        print("WiFi failed to connect")
+        print("WiFi failed")
         return None
 
 
 def handle_request(request_line):
-    """Parse HTTP request and return response."""
     try:
         parts = request_line.split()
         if len(parts) < 2:
@@ -53,7 +45,6 @@ def handle_request(request_line):
         if method != "GET":
             return "405 Method Not Allowed", ""
         
-        # LED endpoints
         if path == "/toggle":
             global motion_triggered_light
             if LED.value():
@@ -79,7 +70,6 @@ def handle_request(request_line):
             state = "ON" if LED.value() else "OFF"
             return "200 OK", json.dumps({"state": state})
         
-        # Buzzer endpoints
         elif path == "/buzzer/on":
             BUZZER.value(1)
             print("Buzzer turned ON")
@@ -105,7 +95,6 @@ def handle_request(request_line):
 
 
 def run_server(wlan, port=80):
-    """Run HTTP server."""
     addr = socket.getaddrinfo("0.0.0.0", port)[0][-1]
     sock = socket.socket()
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -138,7 +127,6 @@ def run_server(wlan, port=80):
 
 
 def pir_handler(pin):
-    """Handle PIR motion detection."""
     global motion_triggered_light, last_motion_time
     if PIR.value():
         last_motion_time = utime.time()
@@ -151,7 +139,6 @@ def pir_handler(pin):
 
 
 def check_motion_timeout():
-    """Check if motion-triggered LED should auto-off."""
     global motion_triggered_light, last_motion_time
     if motion_triggered_light and LED.value():
         elapsed = utime.time() - last_motion_time
@@ -161,15 +148,12 @@ def check_motion_timeout():
             print("LED auto-off (no motion)")
 
 def setup_pir():
-    """Set up PIR sensor interrupt."""
     PIR.irq(trigger=Pin.IRQ_RISING, handler=pir_handler)
     print("PIR sensor configured on Pin 2")
 
 
 if __name__ == "__main__":
-    print("=" * 50)
     print("Starting WiFi Pico server...")
-    print("=" * 50)
     wlan = connect_wifi()
     if wlan:
         setup_pir()

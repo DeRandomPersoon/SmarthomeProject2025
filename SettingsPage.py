@@ -1,8 +1,4 @@
-"""
-Settings page for configuring how the desktop app talks to the Pico.
-Holds serial port options, WiFi connection testing, and persists selections to disk.
-Keep all connection-related testing here so the other pages stay focused on controls.
-"""
+"""Settings page for Pico connection configuration."""
 
 import tkinter as tk
 from tkinter import ttk
@@ -41,11 +37,8 @@ class SettingsPage(BasePage):
     def __init__(self, parent):
         super().__init__(parent)
         self.parent = parent
-        # Hide this page's nav; MainPage provides the visible one
         self.hide_nav()
         self.micro = None
-
-        # Load persisted settings
         self.settings = self.load_settings()
 
         top = tk.Frame(self.content, bg="#1e1e1e")
@@ -73,7 +66,6 @@ class SettingsPage(BasePage):
         tk.Button(btn_row, text="Save", command=self.save_settings).pack(side="left", padx=6)
         tk.Button(btn_row, text="Close", command=lambda: self.on_nav(0)).pack(side="left", padx=6)
 
-        # WiFi testing under the serial controls
         tk.Label(form, text="Pico IP:", bg="#1e1e1e", fg="white").grid(row=3, column=0, sticky="w")
         self.ip_var = tk.StringVar(value=self.settings.get("pico_ip", ""))
         self.ip_entry = tk.Entry(form, textvariable=self.ip_var, width=20)
@@ -83,8 +75,7 @@ class SettingsPage(BasePage):
         wifi_row.grid(row=4, column=0, columnspan=2, sticky="w", pady=(2, 10))
         tk.Button(wifi_row, text="Test WiFi connect", command=self.test_wifi_connect).pack(side="left", padx=6)
 
-        # Database section
-        tk.Label(form, text="", bg="#1e1e1e").grid(row=5, column=0)  # spacer
+        tk.Label(form, text="", bg="#1e1e1e").grid(row=5, column=0)
         tk.Label(form, text="Database Controls:", bg="#1e1e1e", fg="white", font=("Arial", 12, "bold")).grid(row=6, column=0, columnspan=2, sticky="w", pady=(10, 5))
         
         db_row = tk.Frame(form, bg="#1e1e1e")
@@ -184,7 +175,6 @@ class SettingsPage(BasePage):
         threading.Thread(target=worker, daemon=True).start()
 
     def test_db_connection(self):
-        """Test database connection."""
         if not psycopg2:
             self.info_label.config(text="psycopg2 not installed", fg="red")
             return
@@ -208,7 +198,6 @@ class SettingsPage(BasePage):
         threading.Thread(target=worker, daemon=True).start()
     
     def push_data_now(self):
-        """Immediately push buffered data to database."""
         if not psycopg2:
             self.info_label.config(text="psycopg2 not installed", fg="red")
             return
@@ -225,7 +214,6 @@ class SettingsPage(BasePage):
         threading.Thread(target=worker, daemon=True).start()
     
     def _upload_buffered_data(self):
-        """Upload all buffered data from data.txt to database and clear file."""
         if not os.path.exists(DATA_FILE):
             return
         
@@ -271,7 +259,6 @@ class SettingsPage(BasePage):
             cursor.close()
             connection.close()
             
-            # Clear the file after successful upload
             with open(DATA_FILE, 'w') as f:
                 pass
         
@@ -280,7 +267,6 @@ class SettingsPage(BasePage):
             raise
     
     def view_database(self):
-        """Open popup to view pending and uploaded data."""
         if not psycopg2:
             self.info_label.config(text="psycopg2 not installed", fg="red")
             return
@@ -292,7 +278,6 @@ class SettingsPage(BasePage):
         
         tk.Label(popup, text="Database Status", bg="#2a2a2a", fg="white", font=("Arial", 14, "bold")).pack(pady=10)
         
-        # Create text widget with scrollbar
         frame = tk.Frame(popup, bg="#2a2a2a")
         frame.pack(fill="both", expand=True, padx=10, pady=10)
         
@@ -303,12 +288,10 @@ class SettingsPage(BasePage):
         text.pack(fill="both", expand=True)
         scrollbar.config(command=text.yview)
         
-        # Status label
         status_label = tk.Label(popup, text="", bg="#2a2a2a", fg="yellow", font=("Arial", 10))
         status_label.pack(pady=5)
         
         def refresh():
-            """Show pending data.txt and database entries."""
             text.delete(1.0, 'end')
             text.insert('end', "Loading...\n")
             status_label.config(text="Loading...", fg="yellow")
