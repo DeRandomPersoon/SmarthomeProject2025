@@ -49,11 +49,11 @@ class ControlBoard(BasePage):
         self.light_on_vars = []
         self.light_off_vars = []
 
-        for i in range(3):
+        for i in range(4):
             row = tk.Frame(self.btn_frame, bg="#1e1e1e")
             row.pack(pady=8, anchor='center')
 
-            label = "Light" if i == 0 else ("Curtains" if i == 1 else "Heating")
+            label = "Light" if i == 0 else ("Curtains" if i == 1 else ("Heating" if i == 2 else "Buzzer"))
             b = tk.Button(
                 row,
                 text=f"{label}",
@@ -99,9 +99,10 @@ class ControlBoard(BasePage):
         self.micro = None
         self.selected_port = None
 
-        self.schedules = {"lights": [], "curtains": [], "heating": []}
+        self.schedules = {"lights": [], "curtains": [], "heating": [], "buzzer": []}
         self.light_states = [False] * 3
         self.curtain_states = [False] * 3
+        self.buzzer_states = [False]
 
         # Note: schedule editors are shown in popup windows (per device)
         self.curtain_duration_var = tk.IntVar(value=5)  # keep a default for quick edits
@@ -297,6 +298,13 @@ class ControlBoard(BasePage):
                     if slot:
                         self.light_on_vars[i].set(slot['on'])
                         self.light_off_vars[i].set(slot['off'])
+                elif i == 3:
+                    for s in reversed(self.schedules.get('buzzer', [])):
+                        slot = s
+                        break
+                    if slot:
+                        self.light_on_vars[i].set(slot['time'])
+                        self.light_off_vars[i].set('')
             except Exception:
                 pass
 
@@ -395,8 +403,10 @@ class ControlBoard(BasePage):
             self._show_light_schedule_popup(idx)
         elif idx == 1:
             self._show_curtain_schedule_popup()
-        else:
+        elif idx == 2:
             self._show_heating_schedule_popup()
+        else:
+            self._show_buzzer_schedule_popup()
 
     def _show_light_schedule_popup(self, idx):
         def _device_label(i):
@@ -669,6 +679,17 @@ class ControlBoard(BasePage):
                         slot['last_close'] = now.date().isoformat()
                         self._save_schedules()
 
+            for slot in self.schedules.get('buzzer', []):
+                try:
+                    buzzer_t = datetime.datetime.strptime(slot['time'], '%H:%M').time()
+                except Exception:
+                    continue
+                if now_time.hour == buzzer_t.hour and now_time.minute == buzzer_t.minute:
+                    if slot.get('last_trigger') != now.date().isoformat():
+                        self.trigger_buzzer(reason='alarm')
+                        slot['last_trigger'] = now.date().isoformat()
+                        self._save_schedules()
+
             for _ in range(4):
                 if getattr(self, '_scheduler_stop', False):
                     break
@@ -707,11 +728,80 @@ class ControlBoard(BasePage):
         elif idx == 2:
             new_state = not self.light_states[2]
             self.set_light_state(2, new_state, reason='manual')
+        elif idx == 3:
+            self.trigger_buzzer(reason='manual')
 
     def close_curtain(self, idx, reason=''):
         self.curtain_states[idx] = False
         self._update_curtain_visual(idx)
         self.log(f'Curtain {idx+1} closed ({reason})')
+
+    def trigger_buzzer(self, reason=''):
+        """Trigger buzzer pulse on Pico W."""
+        if self.micro and getattr(self.micro, 'is_connected', False):
+            self.status.config(text="Sending buzzer pulse...")
+            def worker():
+                try:
+                    resp = self.micro.send_command("BUZZER PULSE")
+                    self.log(f'Buzzer triggered ({reason})')
+                    self._log_to_database("Buzzer", 1)
+                    self.status.config(text="Buzzer pulsed")
+                except Exception as e:
+                    self.log(f'Buzzer failed: {e}')
+                    self.status.config(text="Buzzer failed")
+            threading.Thread(target=worker, daemon=True).start()
+        else:
+            self.log(f'Buzzer triggered (simulated) ({reason})')
+            self.status.config(text="Buzzer pulsed (simulated)")
+
+    def _show_buzzer_schedule_popup(self):
+        popup = tk.Toplevel(self)
+        popup.title("Buzzer Alarm schedules")
+        popup.geometry("420x300")
+
+        lb = tk.Listbox(popup, width=48, height=8)
+        lb.pack(padx=8, pady=8)
+
+        tk.Label(popup, text="Set alarm times for buzzer to trigger.", bg="#ffffff", fg="#000000").pack(padx=8, pady=(0,6))
+
+        def refresh_list():
+            lb.delete(0, 'end')
+            for i, s in enumerate(self.schedules.get('buzzer', [])):
+                lb.insert('end', f"{i}: ALARM {s['time']}")
+
+        time_var = tk.StringVar(value="07:00")
+
+        row = tk.Frame(popup)
+        row.pack(padx=8, pady=4)
+        tk.Label(row, text="Alarm Time (HH:MM):").grid(row=0, column=0)
+        tk.Entry(row, textvariable=time_var, width=8).grid(row=0, column=1, padx=6)
+
+        def add_slot():
+            try:
+                _ = datetime.datetime.strptime(time_var.get(), '%H:%M')
+            except Exception:
+                self.log('Invalid time format (use HH:MM)')
+                return
+            self.schedules['buzzer'].append({'time': time_var.get(), 'last_trigger': None})
+            self._save_schedules()
+            self._refresh_schedule_views()
+            refresh_list()
+
+        def remove_selected():
+            sel = lb.curselection()
+            if not sel:
+                return
+            try:
+                self.schedules['buzzer'].pop(sel[0])
+                self._save_schedules()
+                self._refresh_schedule_views()
+                refresh_list()
+            except Exception:
+                pass
+
+        tk.Button(popup, text="Add alarm", command=add_slot).pack(padx=6, pady=6)
+        tk.Button(popup, text="Remove selected", command=remove_selected).pack(padx=6)
+        refresh_list()
 
     def add_test_data(self):
         try:

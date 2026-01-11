@@ -11,6 +11,7 @@
       }
     ],
     "curtains": [],
-    "heating": []
+    "heating": [],
+    "buzzer": []
   }
 }

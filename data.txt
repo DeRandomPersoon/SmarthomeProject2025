@@ -2,3 +2,9 @@ test_sensor, 999
 Light_1, 1
 Motion_Sensor, 1
 Heating_3, 0
+Buzzer, 1
+Light_1, 0
+Light_1, 1
+Light_1, 0
+Light_1, 1
+Buzzer, 1

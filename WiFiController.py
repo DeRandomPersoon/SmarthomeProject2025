@@ -4,7 +4,7 @@ import threading
 
 
 class WiFiController:
-	def __init__(self, host="pico.local", port=80, timeout=2.0):
+    def __init__(self, host="pico.local", port=80, timeout=2.0):
         self.host = host
         self.port = port
         self.timeout = timeout
@@ -29,13 +29,14 @@ class WiFiController:
         return False
 
     def disconnect(self):
-
+        self.is_connected = False
 
     def send_command(self, cmd, timeout=None):
-		if not self.is_connected:
-			raise RuntimeError("Not connected to Pico W")
-		
-		t = timeout or self.timeout
+        if not self.is_connected:
+            raise RuntimeError("Not connected to Pico W")
+        
+        t = timeout or self.timeout
+        if t < 5.0:
             t = 5.0
         
         try:
